@@ -32,7 +32,9 @@ double AOChatboxLabel::outlineThickness()
     return m_outline_width * font().pointSize();
   }
   else
+  {
     return m_outline_width;
+  }
 }
 
 void AOChatboxLabel::setOutlineThickness(double w)
@@ -122,7 +124,9 @@ void AOChatboxLabel::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::Antialiasing);
     painter.strokePath(path, m_pen);
     if (1 < m_brush.style() && m_brush.style() < 15)
+    {
       painter.fillPath(path, palette().window());
+    }
     painter.fillPath(path, m_brush);
   }
   else
