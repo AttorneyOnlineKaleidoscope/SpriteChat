@@ -2222,10 +2222,10 @@ void Courtroom::on_chat_return_pressed()
     QStringList emotes_to_check = {pre_emote, "(b)" + emote, "(a)" + emote};
     QStringList effects_to_check = {"_FrameScreenshake", "_FrameRealization", "_FrameSFX"};
 
-    foreach (QString f_effect, effects_to_check)
+    for (QString f_effect : effects_to_check)
     {
       QString packet;
-      foreach (QString f_emote, emotes_to_check)
+      for (QString f_emote : emotes_to_check)
       {
         packet += f_emote;
         if (Options::getInstance().networkedFrameSfxEnabled())
@@ -5014,7 +5014,7 @@ void Courtroom::on_ooc_return_pressed()
     std::sort(case_evidence.begin(), case_evidence.end(), [](const QString &a, const QString &b) { return a.toInt() < b.toInt(); });
 
     // load evidence
-    foreach (QString evi, case_evidence)
+    for (QString evi : case_evidence)
     {
       if (evi == "General")
       {
@@ -5164,7 +5164,7 @@ void Courtroom::on_music_search_edited(QString p_text)
     {
       // Search in metadata
       QList<QTreeWidgetItem *> clist = ui_music_list->findItems(ui_music_search->text(), Qt::MatchContains | Qt::MatchRecursive, 1);
-      foreach (QTreeWidgetItem *item, clist)
+      for (QTreeWidgetItem *item : clist)
       {
         if (item->parent() != nullptr) // So the category shows up too
         {
@@ -5178,7 +5178,7 @@ void Courtroom::on_music_search_edited(QString p_text)
     {
       // Search in metadata
       QList<QTreeWidgetItem *> alist = ui_area_list->findItems(ui_music_search->text(), Qt::MatchContains | Qt::MatchRecursive, 1);
-      foreach (QTreeWidgetItem *item, alist)
+      for (QTreeWidgetItem *item : alist)
       {
         if (item->parent() != nullptr) // So the category shows up too
         {
@@ -6006,7 +6006,7 @@ void Courtroom::show_custom_objection_menu(const QPoint &pos)
     }
     else
     {
-      foreach (CustomObjection custom_objection, custom_objections_list)
+      for (CustomObjection custom_objection : custom_objections_list)
       {
         if (custom_objection.name == selecteditem->text())
         {
@@ -6452,7 +6452,7 @@ void Courtroom::regenerate_ic_chatlog()
 {
   ui_ic_chatlog->clear();
   last_ic_message = "";
-  foreach (ChatLogPiece item, ic_chatlog_history)
+  for (ChatLogPiece item : ic_chatlog_history)
   {
     QString message = item.message;
     QString name = ui_showname_enable->isChecked() ? item.character_name : item.character;
