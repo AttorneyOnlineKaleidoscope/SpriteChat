@@ -771,7 +771,7 @@ QString Options::getUIAsset(QString f_asset_name)
     }
   }
   qWarning() << "Unable to locate ui-asset" << f_asset_name << "in theme" << theme() << "Defaulting to embeeded asset.";
-  return QString(":/data/ui/" + f_asset_name);
+  return QString(":/resource/ui/" + f_asset_name);
 }
 
 void Options::setWindowPosition(QString widget, QPoint position)

@@ -85,14 +85,14 @@ int main(int argc, char *argv[])
   }
 
   QTranslator appTranslator;
-  if (!appTranslator.load("ao_" + p_language, ":/data/translations/"))
+  if (!appTranslator.load("ao_" + p_language, ":/resource/translations/"))
   {
     qDebug() << "Failed to load translation ao_" + p_language;
   }
   else
   {
     QApplication::installTranslator(&appTranslator);
-    qDebug() << ":/data/translations/ao_" + p_language;
+    qDebug() << ":/resource/translations/ao_" + p_language;
   }
 
   main_app.construct_lobby();
