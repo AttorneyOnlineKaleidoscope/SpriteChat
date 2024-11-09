@@ -1,5 +1,4 @@
-#ifndef SERVERDATA_H
-#define SERVERDATA_H
+#pragma once
 
 #include <QObject>
 #include <QString>
@@ -64,5 +63,3 @@ private:
   QString m_asset_url;
 };
 } // namespace server
-
-#endif // SERVERDATA_H
