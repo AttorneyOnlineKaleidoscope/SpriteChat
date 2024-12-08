@@ -2,8 +2,9 @@
 
 #include "file_functions.h"
 
-AOSfxPlayer::AOSfxPlayer(AOApplication *ao_app)
+AOSfxPlayer::AOSfxPlayer(AOApplication &ao_app, kal::AssetPathResolver &assetPathResolver)
     : ao_app(ao_app)
+    , m_resolver(assetPathResolver)
 {}
 
 int AOSfxPlayer::volume()
@@ -45,28 +46,55 @@ void AOSfxPlayer::play(QString path)
 
   BASS_ChannelSetDevice(m_stream[m_current_stream_id], BASS_GetDevice());
   BASS_ChannelPlay(m_stream[m_current_stream_id], false);
-  BASS_ChannelSetSync(m_stream[m_current_stream_id], BASS_SYNC_DEV_FAIL, 0, ao_app->BASSreset, 0);
+  BASS_ChannelSetSync(m_stream[m_current_stream_id], BASS_SYNC_DEV_FAIL, 0, ao_app.BASSreset, 0);
 }
 
 void AOSfxPlayer::findAndPlaySfx(QString sfx)
 {
-  // TODO replace this with proper pathing tools
-  findAndPlayCharacterShout(sfx, QString(), QString());
+  if (auto path = m_resolver.soundFilePath(sfx))
+  {
+    play(path.value());
+    return;
+  }
+
+  kWarning() << "Failed to play sound effect:" << sfx;
 }
 
 void AOSfxPlayer::findAndPlayCharacterSfx(QString sfx, QString character)
 {
-  // TODO replace this with proper pathing tools
-  findAndPlayCharacterShout(sfx, character, QString());
+  const QList<kal::MaybePath> pathlist{
+      m_resolver.characterFilePath(character, sfx, kal::AudioAssetType),
+      m_resolver.soundFilePath(sfx, kal::AudioAssetType),
+  };
+  for (const auto &path : pathlist)
+  {
+    if (path)
+    {
+      play(path.value());
+      return;
+    }
+  }
+
+  kWarning() << QStringLiteral("Failed to play character sound effect (%1)").arg(QStringList{character, sfx}.join(", "));
 }
 
-void AOSfxPlayer::findAndPlayCharacterShout(QString shout, QString character, QString group)
+void AOSfxPlayer::findAndPlayCharacterShout(QString shout, QString character, QString pack)
 {
-  QString file_path = ao_app->get_sfx(shout, group, character);
-  if (file_exists(file_path))
+  const QList<kal::MaybePath> pathlist{
+      m_resolver.characterFilePath(character, shout, kal::AudioAssetType),
+      m_resolver.shoutFilePath(pack, shout, kal::AudioAssetType),
+      m_resolver.soundFilePath(shout, kal::AudioAssetType),
+  };
+  for (const auto &path : pathlist)
   {
-    play(file_path);
+    if (path)
+    {
+      play(path.value());
+      return;
+    }
   }
+
+  kWarning() << QStringLiteral("Failed to play character character sound effect (%1)").arg(QStringList{character, pack, shout}.join(", "));
 }
 
 void AOSfxPlayer::stopAll()
@@ -93,7 +121,7 @@ void AOSfxPlayer::stop(int streamId)
   streamId = maybeFetchCurrentStreamId(streamId);
   if (!ensureValidStreamId(streamId))
   {
-    qWarning().noquote() << QObject::tr("Failed to stop stream; invalid stream ID '%1'").arg(streamId);
+    kWarning() << QObject::tr("Failed to stop stream; invalid stream ID '%1'").arg(streamId);
     return;
   }
 
@@ -121,7 +149,7 @@ void AOSfxPlayer::setLooping(bool toggle, int streamId)
   streamId = maybeFetchCurrentStreamId(streamId);
   if (!ensureValidStreamId(streamId))
   {
-    qWarning().noquote() << QObject::tr("Failed to setup stream loop; invalid stream ID '%1'").arg(streamId);
+    kWarning() << QObject::tr("Failed to setup stream loop; invalid stream ID '%1'").arg(streamId);
     return;
   }
 

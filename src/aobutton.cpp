@@ -1,10 +1,12 @@
 #include "aobutton.h"
 
 #include "options.h"
+#include "spritechatcommon.h"
 
-AOButton::AOButton(AOApplication *ao_app, QWidget *parent)
+AOButton::AOButton(Options &options, kal::AssetPathResolver &assetPathResolver, QWidget *parent)
     : QPushButton(parent)
-    , ao_app(ao_app)
+    , options(options)
+    , m_resolver(assetPathResolver)
 {
   m_movie = new QMovie(this);
 
@@ -23,30 +25,30 @@ void AOButton::setImage(QString image_name)
 {
   deleteMovie();
 
-  QString file_path = ao_app->get_image(image_name, Options::getInstance().theme(), Options::getInstance().subTheme(), ao_app->default_theme, QString(), QString(), QString(), !Options::getInstance().animatedThemeEnabled());
-  if (file_path.isEmpty())
+  auto file_path = m_resolver.currentThemeFilePath(image_name, kal::AnimatedImageAssetType);
+  if (!file_path)
   {
+    setText(image_name);
     setStyleSheet(QString());
     setIcon(QIcon());
+    return;
+  }
+
+  setText(QString());
+  setStyleSheet("QPushButton { background-color: transparent; border: 0px }");
+
+  if (options.animatedThemeEnabled())
+  {
+    m_movie = new QMovie;
+    m_movie->setFileName(file_path.value());
+
+    connect(m_movie, &QMovie::frameChanged, this, &AOButton::handleNextFrame);
+
+    m_movie->start();
   }
   else
   {
-    setText(QString());
-    setStyleSheet("QPushButton { background-color: transparent; border: 0px }");
-
-    if (Options::getInstance().animatedThemeEnabled())
-    {
-      m_movie = new QMovie;
-      m_movie->setFileName(file_path);
-
-      connect(m_movie, &QMovie::frameChanged, this, &AOButton::handleNextFrame);
-
-      m_movie->start();
-    }
-    else
-    {
-      updateIcon(QPixmap(file_path));
-    }
+    updateIcon(QPixmap(file_path.value()));
   }
 }
 

@@ -1,19 +1,15 @@
-// This class represents a static theme-dependent image
-
 #pragma once
 
-#include "aoapplication.h"
+#include "assetpathresolver.h"
 
-#include <QDebug>
 #include <QLabel>
-#include <QMovie>
 
 class AOImage : public QLabel
 {
   Q_OBJECT
 
 public:
-  AOImage(AOApplication *ao_app, QWidget *parent = nullptr);
+  AOImage(kal::AssetPathResolver &assetPathResolver, QWidget *parent = nullptr);
 
   QString image();
 
@@ -21,7 +17,7 @@ public:
   bool setImage(QString fileName);
 
 private:
-  AOApplication *ao_app;
+  kal::AssetPathResolver &m_resolver;
 
   QString m_file_name;
 };

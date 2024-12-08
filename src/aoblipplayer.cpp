@@ -1,7 +1,7 @@
 #include "aoblipplayer.h"
 
-AOBlipPlayer::AOBlipPlayer(AOApplication *ao_app)
-    : ao_app(ao_app)
+AOBlipPlayer::AOBlipPlayer(kal::AssetPathResolver &assetPacketTransport)
+    : m_resolver(assetPacketTransport)
 {}
 
 void AOBlipPlayer::setVolume(int value)
@@ -18,7 +18,7 @@ void AOBlipPlayer::setMuted(bool enabled)
 
 void AOBlipPlayer::setBlip(QString blip)
 {
-  QString path = ao_app->get_sfx_suffix(ao_app->get_sounds_path(blip));
+  QString path = m_resolver.blipFilePath(blip).value_or(QString());
   for (int i = 0; i < STREAM_COUNT; ++i)
   {
     BASS_StreamFree(m_stream[i]);

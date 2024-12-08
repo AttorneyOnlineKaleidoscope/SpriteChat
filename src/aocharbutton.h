@@ -2,6 +2,7 @@
 
 #include "aoapplication.h"
 #include "aoimage.h"
+#include "gameglobal.h"
 
 #include <QEnterEvent>
 #include <QFile>
@@ -14,23 +15,27 @@ class AOCharButton : public QPushButton
   Q_OBJECT
 
 public:
-  AOCharButton(AOApplication *ao_app, QWidget *parent);
+  AOCharButton(Options &options, kal::AssetPathResolver &assetPathResolver, QWidget *parent);
 
+  void setCharacterId(kal::CharacterId id);
   void setCharacter(QString character);
-
   void setTaken(bool enabled);
 
+Q_SIGNALS:
+  void characterClicked(kal::CharacterId);
+
 protected:
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-  void enterEvent(QEvent *event) override;
-#else
   void enterEvent(QEnterEvent *event) override;
-#endif
   void leaveEvent(QEvent *event) override;
 
 private:
-  AOApplication *ao_app;
+  Options &options;
+  kal::AssetPathResolver &m_resolver;
+  kal::CharacterId m_id = kal::NoCharacterId;
   bool m_taken = false;
   AOImage *ui_taken;
   AOImage *ui_selector;
+
+private Q_SLOTS:
+  void notifyClick();
 };

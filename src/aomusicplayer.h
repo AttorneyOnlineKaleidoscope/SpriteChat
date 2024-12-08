@@ -1,6 +1,7 @@
 #pragma once
 
 #include "aoapplication.h"
+#include "gameglobal.h"
 
 #include <QFutureWatcher>
 
@@ -11,12 +12,12 @@ public:
   // 1 = ambience
   static constexpr int STREAM_COUNT = 2;
 
-  explicit AOMusicPlayer(AOApplication *ao_app);
+  explicit AOMusicPlayer(Options &options, AOApplication &ao_app);
   virtual ~AOMusicPlayer();
 
   void setMuted(bool enabled);
 
-  QString playStream(QString song, int streamId, bool loopEnabled, int effectFlags);
+  QString playStream(QString song, int streamId, bool loopEnabled, kal::MusicEffects effectFlags);
 
   void setStreamVolume(int value, int streamId);
   void setStreamLooping(bool enabled, int streamId);
@@ -24,7 +25,8 @@ public:
   QFutureWatcher<QString> m_watcher;
 
 private:
-  AOApplication *ao_app;
+  Options &options;
+  AOApplication &ao_app;
 
   bool m_muted = false;
 

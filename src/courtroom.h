@@ -12,59 +12,57 @@
 #include "aoevidencedisplay.h"
 #include "aoimage.h"
 #include "aomusicplayer.h"
-#include "aopacket.h"
 #include "aosfxplayer.h"
 #include "aotextarea.h"
 #include "aotextboxwidgets.h"
 #include "chatlogpiece.h"
 #include "datatypes.h"
-#include "debug_functions.h"
+#include "effect.h"
 #include "eventfilters.h"
-#include "file_functions.h"
-#include "hardware_functions.h"
+#include "game/evidence.h"
+#include "gameglobal.h"
+#include "gridnavigator.h"
+#include "gui/buttongroup.h"
 #include "lobby.h"
 #include "screenslidetimer.h"
 #include "scrolltext.h"
-#include "widgets/aooptionsdialog.h"
-#include "widgets/playerlistwidget.h"
+#include "spritechatcommon.h"
+#include "widget/optionswindow.h"
+#include "widget/flipbutton.h"
+#include "widget/playerlistwidget.h"
 
+#include <QBrush>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
-#include <QHeaderView>
-#include <QLineEdit>
-#include <QListWidget>
-#include <QMainWindow>
-#include <QMap>
-#include <QPlainTextEdit>
-#include <QQueue>
-#include <QSlider>
-#include <QSpinBox>
-#include <QTextBrowser>
-#include <QTreeWidget>
-#include <QVector>
-
-#include <QBrush>
 #include <QDebug>
 #include <QDesktopServices>
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QFont>
+#include <QFuture>
+#include <QHeaderView>
 #include <QInputDialog>
+#include <QLineEdit>
+#include <QList>
+#include <QListWidget>
+#include <QMainWindow>
+#include <QMap>
 #include <QMenu>
 #include <QMessageBox>
 #include <QParallelAnimationGroup>
+#include <QPlainTextEdit>
 #include <QPropertyAnimation>
+#include <QQueue>
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QSlider>
+#include <QSpinBox>
 #include <QTextBoundaryFinder>
+#include <QTextBrowser>
 #include <QTextCharFormat>
-
-#include <QFuture>
-
-#include <algorithm>
-#include <stack>
+#include <QTreeWidget>
 
 class AOApplication;
 
@@ -73,57 +71,24 @@ class Courtroom : public QMainWindow
   Q_OBJECT
 
 public:
-  explicit Courtroom(AOApplication *p_ao_app);
+  explicit Courtroom(Options &options, AOApplication &p_ao_app, kal::AssetPathResolver &assetPathResolver, const kal::NetworkSession &session, QWidget *parent = nullptr);
   ~Courtroom();
 
   void update_audio_volume();
 
-  void append_char(CharacterSlot p_char);
-  void append_music(QString f_music);
-  void append_area(QString f_area);
-  void clear_chars();
-  void clear_music();
-  void clear_areas();
+  void setCharacterList(const QStringList &characterList);
+  void setMusicList(const QStringList &musicList);
+  void setAreaList(const QStringList &areaList);
 
   PlayerListWidget *playerList();
 
-  void fix_last_area();
-
-  void arup_append(int players, QString status, QString cm, QString locked);
-
-  void arup_clear();
-
-  void arup_modify(int type, int place, QString value);
-
-  void character_loading_finished();
+  void reset_character_select();
+  void buildCharacterSelectTree();
 
   void set_courtroom_size();
 
   // sets position of widgets based on theme ini files
   void set_widgets();
-
-  // sets font size based on theme ini files
-  void set_font(QWidget *widget, QString class_name, QString p_identifier, QString p_char = QString(), QString font_name = QString(), int f_pointsize = 0);
-
-  // Get the properly constructed font
-  QFont get_qfont(QString font_name, int f_pointsize, bool antialias = true);
-
-  // actual operation of setting the font on a widget
-  void set_qfont(QWidget *widget, QString class_name, QFont font, QColor f_color = Qt::black, bool bold = false, bool outlined = false, QColor outline_color = QColor(0, 0, 0), int outline_width = 1);
-
-  // helper function that calls above function on the relevant widgets
-  void set_fonts(QString p_char = QString());
-
-  // sets dropdown menu stylesheet
-  void set_stylesheet(QWidget *widget);
-
-  // helper funciton that call above function on the relevant widgets
-  void set_stylesheets();
-
-  void set_window_title(QString p_title);
-
-  // reads theme and sets size and pos based on the identifier (using p_misc if provided)
-  void set_size_and_pos(QWidget *p_widget, QString p_identifier, QString p_misc = QString());
 
   // sets status as taken on character with cid n_char and places proper shading
   // on charselect
@@ -131,7 +96,7 @@ public:
 
   // sets the current background to argument. also does some checks to see if
   // it's a legacy bg
-  void set_background(QString p_background, bool display = false);
+  void set_background(QString p_background);
 
   // sets the local character pos/side to use.
   void set_side(QString p_side);
@@ -140,10 +105,7 @@ public:
   void set_pos_dropdown(QStringList pos_dropdowns);
 
   // sets the evidence list member variable to argument
-  void set_evidence_list(QVector<EvidenceItem> &p_evi_list);
-
-  // called when a DONE#% from the server was received
-  void done_received();
+  void set_evidence_list(QList<kal::Evidence> &p_evi_list);
 
   // sets the local mute list based on characters available on the server
   void set_mute_list();
@@ -158,17 +120,10 @@ public:
   // desk_mod 4 and 5
   void set_self_offset(const QString &p_list, kal::AnimationLayer *p_layer);
 
-  // takes in serverD-formatted IP list as prints a converted version to server
-  // OOC admittedly poorly named
-  void set_ip_list(QString p_list);
-
-  // disables chat if current cid matches second argument
-  // enables if p_muted is false
-  void set_mute(bool p_muted, int p_cid);
-
   // cid = character id, returns the cid of the currently selected character
   QString get_current_char();
   QString get_current_background();
+  kal::MaybePath current_background_file_path(const QString &fileName, kal::AssetType type = kal::NoAssetType);
 
   QString default_side();
   QString current_or_default_side();
@@ -177,19 +132,14 @@ public:
   // Optional "char_name" is the iniswap we're using
   void update_character(int p_cid, QString char_name = QString(), bool reset_emote = false);
 
-  // properly sets up some varibles: resets user state
-  void enter_courtroom();
-
-  // helper function that populates ui_music_list with the contents of
-  // music_list
-  void list_music();
-  void list_areas();
+  void displayMusicList();
+  void displayAreaList();
 
   // Debug log (formerly master server chat log)
   void debug_message_handler(QtMsgType type, const QMessageLogContext &context, const QString &msg);
 
   // OOC chat log
-  void append_server_chatmessage(QString p_name, QString p_message, QString p_color);
+  void append_server_chatmessage(QString p_name, QString p_message, bool fromServer);
 
   // Add the message packet to the stack
   void chatmessage_enqueue(QStringList p_contents);
@@ -261,13 +211,13 @@ public:
   // prints who played the song to IC chat and plays said song(if found on local
   // filesystem) takes in a list where the first element is the song name and
   // the second is the char id of who played it
-  void handle_song(QStringList *p_contents);
+  void handle_song(const QString &track, kal::CharacterId characterId, const std::optional<QString> &characterName, int channelId, bool loop, const kal::MusicEffects &effects);
 
   void play_preanim(bool immediate);
 
   // plays the witness testimony or cross examination animation based on
   // argument
-  void handle_wtce(QString p_wtce, int variant);
+  void handle_wtce(kal::SplashId splashId);
 
   // sets the hp bar of defense(p_bar 1) or pro(p_bar 2)
   // state is an number between 0 and 10 inclusive
@@ -283,28 +233,25 @@ public:
   void set_clock_visibility(int id, bool visible);
   void skip_clocks(qint64 msecs);
 
-  qint64 pong();
   // Truncates text so it fits within theme-specified boundaries and sets the tooltip to the full string
   void truncate_label_text(QWidget *p_widget, QString p_identifier);
 
   void on_authentication_state_received(int p_state);
 
-  enum JudgeState
-  {
-    POS_DEPENDENT = -1,
-    HIDE_CONTROLS = 0,
-    SHOW_CONTROLS = 1
-  };
-
-  JudgeState get_judge_state();
-  void set_judge_state(JudgeState new_state);
+  kal::JudgeMode get_judge_state();
+  void set_judge_state(kal::JudgeMode new_state);
   void set_judge_buttons();
+
+  void setupCharacterSelect();
 
 protected:
   virtual void closeEvent(QCloseEvent *event) override;
 
 private:
-  AOApplication *ao_app;
+  Options &options;
+  AOApplication &ao_app;
+  kal::AssetPathResolver &m_resolver;
+  const kal::NetworkSession &m_session;
 
   // Percentage of audio that is suppressed when client is not in focus
   int suppress_audio = 0;
@@ -312,21 +259,14 @@ private:
   int m_courtroom_width = 714;
   int m_courtroom_height = 668;
 
-  int m_viewport_x = 0;
-  int m_viewport_y = 0;
-
   int m_viewport_width = 256;
   int m_viewport_height = 192;
 
-  int maximumMessages = 0;
-
   QParallelAnimationGroup *m_screenshake_anim_group;
-
   kal::ScreenSlideTimer *m_screenslide_timer;
 
   bool next_character_is_not_special = false; // If true, write the
                                               // next character as it is.
-
   bool message_is_centered = false;
 
   int current_display_speed = 3;
@@ -343,32 +283,19 @@ private:
   int char_vert_offset = 0;
 
   // 0 = in front, 1 = behind
-  int pair_order = 0;
+  kal::PairLayer m_pair_layer = kal::FrontPairLayer;
 
-  QVector<CharacterSlot> char_list;
-  QVector<EvidenceItem> evidence_list;
-  QVector<QString> music_list;
-  QVector<QString> area_list;
+  QList<CharacterSlot> m_character_list;
+  QList<QString> m_music_list;
+  QList<AreaSlot> m_area_list;
 
-  QVector<int> arup_players;
-  QVector<QString> arup_statuses;
-  QVector<QString> arup_cms;
-  QVector<QString> arup_locks;
-
-  QVector<ChatLogPiece> ic_chatlog_history;
+  QList<ChatLogPiece> ic_chatlog_history;
   QString last_ic_message;
 
   QQueue<QStringList> chatmessage_queue;
 
-  // triggers ping_server() every 45 seconds
-  QTimer *keepalive_timer;
-
   // determines how fast messages tick onto screen
   QTimer *chat_tick_timer;
-
-  // count up timer to check how long it took for us to get a response from ping_server()
-  QElapsedTimer ping_timer;
-  bool is_pinging = false;
 
   // int chat_tick_interval = 60;
   // which tick position(character in chat message) we are at
@@ -450,22 +377,16 @@ private:
   // amount of ghost blocks
   int ghost_blocks = 0;
 
-  // Minumum and maximum number of parameters in the MS packet
-  static const int MS_MINIMUM = 15;
-  static const int MS_MAXIMUM = 32;
-  QString m_chatmessage[MS_MAXIMUM];
-  QString m_previous_chatmessage[MS_MAXIMUM];
+  QString m_chatmessage[CHAT_MESSAGE_SIZE];
+  QString m_previous_chatmessage[CHAT_MESSAGE_SIZE];
+  EffectDataPack m_chatfxpack;
 
   QString additive_previous;
 
   // char id, muted or not
   QMap<int, bool> mute_map;
 
-  // QVector<int> muted_cids;
-
-  bool is_muted = false;
-
-  JudgeState judge_state = POS_DEPENDENT;
+  kal::JudgeMode m_judge_mode = kal::OptionalJudgeMode;
 
   // state of animation, 0 = objecting, 1 = preanim, 2 = talking, 3 = idle, 4 =
   // noniterrupting preanim, 5 = (c) animation
@@ -479,20 +400,19 @@ private:
   int text_state = 2;
 
   // character id, which index of the char_list the player is
-  int m_cid = -1;
+  kal::CharacterId m_character_id = kal::NoCharacterId;
   // cid and this may differ in cases of ini-editing
   QString current_char;
+  QString m_character_effect;
+  EffectDataPack m_fxpack;
 
-  int objection_state = 0;
-  QString objection_custom;
+  QString m_custom_shout;
   struct CustomObjection
   {
     QString name;
     QString filename;
   };
-  QList<CustomObjection> custom_objections_list;
-  int realization_state = 0;
-  int screenshake_state = 0;
+  QList<CustomObjection> m_custom_shout_list;
   int text_color = 0;
 
   // How many unique user colors are possible
@@ -500,17 +420,17 @@ private:
 
   // Text Color-related optimization:
   // Current color list indexes to real color references
-  QVector<int> color_row_to_number;
+  QList<int> color_row_to_number;
 
   // List of associated RGB colors for this color index
-  QVector<QColor> color_rgb_list;
+  QList<QColor> color_rgb_list;
 
   // Same as above but populated from misc/default's config
-  QVector<QColor> default_color_rgb_list;
+  QList<QColor> default_color_rgb_list;
 
   // Get a color index from an arbitrary misc config
   void gen_char_rgb_list(QString p_misc);
-  QVector<QColor> char_color_rgb_list;
+  QList<QColor> char_color_rgb_list;
 
   // Misc we used for the last message, and the one we're using now. Used to avoid loading assets when it's not needed
   QString current_misc;
@@ -523,37 +443,30 @@ private:
   QStringList color_markdown_end_list;
 
   // Whether or not we're supposed to remove this char during parsing
-  QVector<bool> color_markdown_remove_list;
+  QList<bool> color_markdown_remove_list;
 
   // Whether or not this color allows us to play the talking animation
-  QVector<bool> color_markdown_talking_list;
+  QList<bool> color_markdown_talking_list;
   // Text Color-related optimization END
 
   // Current list file sorted line by line
-  QStringList sound_list;
-
-  // Current SFX the user put in for the sfx dropdown list
-  QString custom_sfx;
+  QList<SfxItem> sfx_list;
 
   // is the message we're about to send supposed to present evidence?
-  bool is_presenting_evidence = false;
   bool c_played = false; // whether we've played a (c)-style postanimation yet
 
   // have we already presented evidence for this message?
   bool evidence_presented = false;
 
-  QString effect;
+  QString effect() const;
 
   // Music effect flags we want to send to server when we play music
-  int music_flags = FADE_OUT;
+  kal::MusicEffects music_flags = kal::FadeOutMusicEffect;
 
   int defense_bar_state = 0;
   int prosecution_bar_state = 0;
 
-  int current_char_page = 0;
-  int char_columns = 10;
-  int char_rows = 9;
-  int max_chars_on_page = 90;
+  kal::GridNavigator m_character_grid;
 
   const int button_width = 60;
   const int button_height = 60;
@@ -564,9 +477,9 @@ private:
   int emote_rows = 2;
   int max_emotes_on_page = 10;
 
-  QVector<EvidenceItem> local_evidence_list;
-  QVector<EvidenceItem> private_evidence_list;
-  QVector<EvidenceItem> global_evidence_list;
+  QList<kal::Evidence> local_evidence_list;
+  QList<kal::Evidence> private_evidence_list;
+  QList<kal::Evidence> global_evidence_list;
 
   // false = use private_evidence_list
   bool current_evidence_global = true;
@@ -580,7 +493,7 @@ private:
   // whether the ooc chat is server or master chat, true is server
   bool server_ooc = true;
 
-  QString current_background = "default";
+  QString current_background = kal::DEFAULT_BACKGROUND;
 
   // used for courtroom slide logic
   QString last_side = "";
@@ -639,12 +552,10 @@ private:
   ScrollText *ui_music_name;
   kal::InterfaceAnimationLayer *ui_music_display;
 
-  kal::StickerAnimationLayer *ui_vp_sticker;
-
   static const int max_clocks = 5;
   AOClockLabel *ui_clock[max_clocks];
 
-  AOButton *ui_pair_button;
+  FlipButton *ui_pair_button;
   QListWidget *ui_pair_list;
   QSpinBox *ui_pair_offset_spinbox;
   QSpinBox *ui_pair_vert_offset_spinbox;
@@ -663,7 +574,7 @@ private:
   QLineEdit *ui_music_search;
 
   QWidget *ui_emotes;
-  QVector<AOEmoteButton *> ui_emote_list;
+  QList<AOEmoteButton *> ui_emote_list;
   AOButton *ui_emote_left;
   AOButton *ui_emote_right;
 
@@ -672,11 +583,18 @@ private:
 
   QComboBox *ui_emote_dropdown;
   QComboBox *ui_pos_dropdown;
-  AOButton *ui_pos_remove;
+  AOButton *ui_pos_remove = nullptr;
 
   QComboBox *ui_iniswap_dropdown;
   AOButton *ui_iniswap_remove;
 
+  enum SfxSlot
+  {
+    SFX_DEFAULT,
+    SFX_NONE,
+    SFX_EDITABLE,
+    SFX_CUSTOM,
+  };
   QComboBox *ui_sfx_dropdown;
   AOButton *ui_sfx_remove;
 
@@ -689,9 +607,12 @@ private:
   QLabel *ui_sfx_label;
   QLabel *ui_blip_label;
 
-  AOButton *ui_hold_it;
-  AOButton *ui_objection;
-  AOButton *ui_take_that;
+  FlipButton *ui_hold_it;
+  FlipButton *ui_objection;
+  FlipButton *ui_take_that;
+  FlipButton *ui_custom_shout;
+  QMenu *menu_custom_shout;
+  kal::ButtonGroup *ui_shout_group;
 
   AOButton *ui_ooc_toggle;
 
@@ -716,11 +637,9 @@ private:
 
   QCheckBox *ui_slide_enable;
 
-  AOButton *ui_custom_objection;
-  QMenu *custom_obj_menu;
-  AOButton *ui_realization;
-  AOButton *ui_screenshake;
-  AOButton *ui_mute;
+  FlipButton *ui_realization;
+  FlipButton *ui_screenshake;
+  FlipButton *ui_mute;
 
   AOButton *ui_defense_plus;
   AOButton *ui_defense_minus;
@@ -734,17 +653,15 @@ private:
   QSlider *ui_sfx_slider;
   QSlider *ui_blip_slider;
 
-  AOImage *ui_muted;
-
   AOButton *ui_evidence_button;
   AOImage *ui_evidence;
   QLineEdit *ui_evidence_name;
   AOLineEditFilter *ui_evidence_name_filter;
   QWidget *ui_evidence_buttons;
-  QVector<AOEvidenceButton *> ui_evidence_list;
+  QList<AOEvidenceButton *> ui_evidence_list;
   AOButton *ui_evidence_left;
   AOButton *ui_evidence_right;
-  AOButton *ui_evidence_present;
+  FlipButton *ui_evidence_present;
   AOImage *ui_evidence_overlay;
   AOButton *ui_evidence_delete;
   QLineEdit *ui_evidence_image_name;
@@ -761,17 +678,17 @@ private:
   AOImage *ui_char_select_background;
 
   // pretty list of characters
-  QTreeWidget *ui_char_list;
+  QTreeWidget *ui_character_tree;
 
   // abstract widget to hold char buttons
   QWidget *ui_char_buttons;
 
-  QVector<AOCharButton *> ui_char_button_list;
-  QVector<AOCharButton *> ui_char_button_list_filtered;
+  QList<AOCharButton *> ui_character_list;
+  QList<int> ui_filtered_character_list;
+  QMap<int, QTreeWidgetItem *> ui_character_map;
 
   AOButton *ui_back_to_lobby;
-
-  QLineEdit *ui_char_password;
+  AOButton *ui_close_character_select;
 
   AOButton *ui_char_select_left;
   AOButton *ui_char_select_right;
@@ -779,16 +696,23 @@ private:
   AOButton *ui_spectator;
 
   QLineEdit *ui_char_search;
-  QCheckBox *ui_char_passworded;
   QCheckBox *ui_char_taken;
 
-  void construct_char_select();
-  void set_char_select();
-  void set_char_select_page();
-  void char_clicked(int n_char);
+  kal::ShoutId currentShoutId() const { return kal::ShoutId(ui_shout_group->checkedId(kal::NoShout)); }
+  void uncheckShouts()
+  {
+    ui_hold_it->setChecked(false);
+    ui_objection->setChecked(false);
+    ui_take_that->setChecked(false);
+    ui_custom_shout->setChecked(false);
+  }
+
+  void buildCharacterSelect();
+  void buildCharacterSelectList();
+  void displayCurrentCharacterSelectPage();
+  void requestCharacter(kal::CharacterId n_char);
   void on_char_button_context_menu_requested(const QPoint &pos);
-  void put_button_in_place(int starting, int chars_on_this_page);
-  void filter_character_list();
+  void filterCharacterSelectList();
 
   void initialize_emotes();
   void refresh_emotes();
@@ -803,12 +727,14 @@ private:
   void reset_ui();
 
   void regenerate_ic_chatlog();
+
 public Q_SLOTS:
   void objection_done();
   void preanim_done();
   void do_screenshake();
   void do_flash();
-  void do_effect(QString fx_path, QString fx_sound, QString p_char, QString p_folder);
+  void do_effect(const QString &packName, const QString &effectName);
+  void do_character_effect(const QString &character, const QString &effectId);
   void play_char_sfx(QString sfx_name);
 
   void mod_called(QString p_ip);
@@ -816,6 +742,12 @@ public Q_SLOTS:
   void on_reload_theme_clicked();
 
   void update_ui_music_name();
+
+Q_SIGNALS:
+  void on_back_to_lobby_clicked();
+
+private:
+  void setAudioMuted(bool on);
 
 private Q_SLOTS:
   void start_chat_ticking();
@@ -858,25 +790,20 @@ private Q_SLOTS:
   void on_iniswap_dropdown_changed(int p_index);
   void set_iniswap_dropdown();
   void on_iniswap_context_menu_requested(const QPoint &pos);
-  void on_iniswap_edit_requested();
   void on_iniswap_remove_clicked();
 
   void on_sfx_dropdown_changed(int p_index);
-  void on_sfx_dropdown_custom(QString p_sfx);
   void set_sfx_dropdown();
+  void update_custom_sfx(const QString &filename);
   void on_sfx_context_menu_requested(const QPoint &pos);
   void on_sfx_play_clicked();
-  void on_sfx_edit_requested();
-  void on_sfx_remove_clicked();
+  void on_sfx_reset_selection();
 
   void set_effects_dropdown();
   void on_effects_context_menu_requested(const QPoint &pos);
-  void on_effects_edit_requested();
   void on_character_effects_edit_requested();
-  void on_effects_dropdown_changed(int p_index);
-  bool effects_dropdown_find_and_set(QString effect);
 
-  QString get_char_sfx();
+  QString get_current_sfx();
   int get_char_sfx_delay();
 
   void on_evidence_name_edited();
@@ -891,19 +818,15 @@ private Q_SLOTS:
   void on_evidence_right_clicked();
   void on_evidence_present_clicked();
 
-  void on_hold_it_clicked();
-  void on_objection_clicked();
-  void on_take_that_clicked();
-  void on_custom_objection_clicked();
+  void checkCurrentShout();
   void show_custom_objection_menu(const QPoint &pos);
 
   void show_emote_menu(const QPoint &pos);
 
   void on_realization_clicked();
-  void on_screenshake_clicked();
 
-  void on_mute_clicked();
-  void on_pair_clicked();
+  void on_mute_clicked(bool enabled);
+  void on_pair_clicked(bool enabled);
   void on_pair_order_dropdown_changed(int p_index);
 
   void on_defense_minus_clicked();
@@ -956,32 +879,47 @@ private Q_SLOTS:
   void on_evidence_load_clicked();
   void evidence_save(QString filename);
   void evidence_load(QString filename);
-  bool compare_evidence_changed(EvidenceItem evi_a, EvidenceItem evi_b);
-
-  void on_back_to_lobby_clicked();
+  bool compare_evidence_changed(kal::Evidence evi_a, kal::Evidence evi_b);
 
   void on_char_list_double_clicked(QTreeWidgetItem *p_item, int column);
-  void on_char_select_left_clicked();
-  void on_char_select_right_clicked();
-  void on_char_search_changed();
-  void on_char_taken_clicked();
-  void on_char_passworded_clicked();
+  void previousCharacterSelectPage();
+  void nextCharacterSelectPage();
 
-  void on_spectator_clicked();
+  void requestSpectating();
 
   void on_switch_area_music_clicked();
 
   void on_application_state_changed(Qt::ApplicationState state);
 
-  void ping_server();
-
   // Proceed to parse the oldest chatmessage and remove it from the stack
   void chatmessage_dequeue();
 
-  void preview_emote(QString emote, kal::CharacterAnimationLayer::EmoteType emoteType);
+  void preview_emote(QString emote, kal::EmoteType emoteType);
   void update_emote_preview();
 
   // After attempting to play a transition animation, clean up the viewport
   // objects for everyone else and continue the IC processing callstack
   void post_transition_cleanup();
+
+private: // TODO this needs to be separated to its own theme stylist implementation.
+  // sets font size based on theme ini files
+  void set_font(QWidget *widget, QString class_name, QString p_identifier, QString p_char = QString(), QString font_name = QString(), int f_pointsize = 0);
+
+  // Get the properly constructed font
+  QFont get_qfont(QString font_name, int f_pointsize, bool antialias = true);
+
+  // actual operation of setting the font on a widget
+  void set_qfont(QWidget *widget, QString class_name, QFont font, QColor f_color = Qt::black, bool bold = false, bool outlined = false, QColor outline_color = QColor(0, 0, 0), int outline_width = 1);
+
+  // helper function that calls above function on the relevant widgets
+  void set_fonts(QString p_char = QString());
+
+  // sets dropdown menu stylesheet
+  void set_stylesheet(QWidget *widget);
+
+  // helper funciton that call above function on the relevant widgets
+  void set_stylesheets();
+
+  // reads theme and sets size and pos based on the identifier (using p_misc if provided)
+  void set_size_and_pos(QWidget *p_widget, QString p_identifier, QString p_misc = QString());
 };

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "animationloader.h"
+#include "assetpathresolver.h"
 #include "datatypes.h"
+#include "gameglobal.h"
 
 #include <QBitmap>
 #include <QDebug>
@@ -16,7 +18,6 @@
 #endif
 
 class AOApplication;
-class VPath;
 
 // "Brief" explanation of what the hell this is:
 //
@@ -132,15 +133,6 @@ class CharacterAnimationLayer : public AnimationLayer
   Q_OBJECT
 
 public:
-  enum EmoteType
-  {
-    NoEmoteType,
-    PreEmote,
-    IdleEmote,
-    TalkEmote,
-    PostEmote,
-  };
-
   enum EffectType
   {
     SfxEffect,
@@ -156,9 +148,9 @@ public:
     QString file_name;
   };
 
-  CharacterAnimationLayer(AOApplication *ao_app, QWidget *parent = nullptr);
+  CharacterAnimationLayer(AOApplication &ao_app, kal::AssetPathResolver &assetPathResolver, QWidget *parent = nullptr);
 
-  void loadCharacterEmote(QString character, QString fileName, EmoteType emoteType, int durationLimit = 0);
+  void loadCharacterEmote(QString character, QString fileName, kal::EmoteType emoteType, int durationLimit = 0);
 
   void setFrameEffects(QStringList data);
 
@@ -170,12 +162,13 @@ Q_SIGNALS:
   void flashEffect();
 
 private:
-  AOApplication *ao_app;
+  AOApplication &ao_app;
+  kal::AssetPathResolver &m_resolver;
 
   QString m_character;
   QString m_emote;
   QString m_resolved_emote;
-  EmoteType m_emote_type = NoEmoteType;
+  kal::EmoteType m_emote_type = kal::NoEmoteType;
   QTimer *m_duration_timer = nullptr;
   int m_duration = 0;
 
@@ -197,12 +190,13 @@ class BackgroundAnimationLayer : public AnimationLayer
   Q_OBJECT
 
 public:
-  BackgroundAnimationLayer(AOApplication *ao_app, QWidget *parent = nullptr);
+  BackgroundAnimationLayer(AOApplication &ao_app, kal::AssetPathResolver &assetPathResolver, QWidget *parent = nullptr);
 
-  void loadAndPlayAnimation(QString fileName);
+  void loadAndPlayAnimation(const QString &background, QString fileName);
 
 private:
-  AOApplication *ao_app;
+  AOApplication &ao_app;
+  kal::AssetPathResolver &m_resolver;
 };
 
 class SplashAnimationLayer : public AnimationLayer
@@ -210,12 +204,13 @@ class SplashAnimationLayer : public AnimationLayer
   Q_OBJECT
 
 public:
-  SplashAnimationLayer(AOApplication *ao_app, QWidget *parent = nullptr);
+  SplashAnimationLayer(AOApplication &ao_app, kal::AssetPathResolver &assetPathResolver, QWidget *parent = nullptr);
 
   void loadAndPlayAnimation(QString fileName, QString character, QString miscellaneous);
 
 private:
-  AOApplication *ao_app;
+  AOApplication &ao_app;
+  kal::AssetPathResolver &m_resolver;
 };
 
 class EffectAnimationLayer : public AnimationLayer
@@ -223,14 +218,14 @@ class EffectAnimationLayer : public AnimationLayer
   Q_OBJECT
 
 public:
-  EffectAnimationLayer(AOApplication *ao_app, QWidget *parent = nullptr);
+  EffectAnimationLayer(AOApplication &ao_app, QWidget *parent = nullptr);
 
   void loadAndPlayAnimation(QString fileName, bool repeat = false);
 
   void setHideWhenStopped(bool enabled);
 
 private:
-  AOApplication *ao_app;
+  AOApplication &ao_app;
 
   bool m_hide_when_stopped = false;
 
@@ -243,24 +238,12 @@ class InterfaceAnimationLayer : public AnimationLayer
   Q_OBJECT
 
 public:
-  InterfaceAnimationLayer(AOApplication *ao_app, QWidget *parent = nullptr);
+  InterfaceAnimationLayer(AOApplication &ao_app, kal::AssetPathResolver &assetPathResolver, QWidget *parent = nullptr);
 
   void loadAndPlayAnimation(QString fileName, QString miscName);
 
 private:
-  AOApplication *ao_app;
-};
-
-class StickerAnimationLayer : public AnimationLayer
-{
-  Q_OBJECT
-
-public:
-  StickerAnimationLayer(AOApplication *ao_app, QWidget *parent = nullptr);
-
-  void loadAndPlayAnimation(QString fileName);
-
-private:
-  AOApplication *ao_app;
+  AOApplication &ao_app;
+  kal::AssetPathResolver &m_resolver;
 };
 } // namespace kal

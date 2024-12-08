@@ -10,13 +10,14 @@ class AOButton : public QPushButton
   Q_OBJECT
 
 public:
-  explicit AOButton(AOApplication *ao_app, QWidget *parent = nullptr);
+  explicit AOButton(Options &options, kal::AssetPathResolver &assetPathResolver, QWidget *parent = nullptr);
   virtual ~AOButton();
 
   void setImage(QString image_name);
 
 private:
-  AOApplication *ao_app;
+  Options &options;
+  kal::AssetPathResolver &m_resolver;
 
   QMovie *m_movie = nullptr;
 

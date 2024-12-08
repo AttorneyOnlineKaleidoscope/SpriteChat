@@ -9,8 +9,9 @@
 #include <QFuture>
 #include <QWidget>
 
-AOMusicPlayer::AOMusicPlayer(AOApplication *ao_app)
-    : ao_app(ao_app)
+AOMusicPlayer::AOMusicPlayer(Options &options, AOApplication &ao_app)
+    : options(options)
+    , ao_app(ao_app)
 {}
 
 AOMusicPlayer::~AOMusicPlayer()
@@ -21,8 +22,9 @@ AOMusicPlayer::~AOMusicPlayer()
   }
 }
 
-QString AOMusicPlayer::playStream(QString song, int streamId, bool loopEnabled, int effectFlags)
+QString AOMusicPlayer::playStream(QString song, int streamId, bool loopEnabled, kal::MusicEffects effectFlags)
 {
+  kDebug() << "Playing stream" << song << "on channel" << streamId;
   if (!ensureValidStreamId(streamId))
   {
     return "[ERROR] Invalid Channel";
@@ -38,7 +40,7 @@ QString AOMusicPlayer::playStream(QString song, int streamId, bool loopEnabled, 
   HSTREAM newstream;
   if (f_path.startsWith("http"))
   {
-    if (!Options::getInstance().streamingEnabled())
+    if (!options.streamingEnabled())
     {
       BASS_ChannelStop(m_stream_list[streamId]);
       return QObject::tr("[MISSING] Streaming disabled.");
@@ -49,13 +51,11 @@ QString AOMusicPlayer::playStream(QString song, int streamId, bool loopEnabled, 
   else
   {
     flags |= BASS_STREAM_PRESCAN | BASS_UNICODE | BASS_ASYNCFILE;
-
-    f_path = ao_app->get_real_path(ao_app->get_music_path(song));
     newstream = BASS_StreamCreateFile(FALSE, f_path.utf16(), 0, 0, flags);
   }
 
   int error = BASS_ErrorGetCode();
-  if (Options::getInstance().audioOutputDevice() != "default")
+  if (options.audioOutputDevice() != "default")
   {
     BASS_ChannelSetDevice(m_stream_list[streamId], BASS_GetDevice());
   }
@@ -66,9 +66,9 @@ QString AOMusicPlayer::playStream(QString song, int streamId, bool loopEnabled, 
   QString d_path = f_path + ".txt";
   if (loopEnabled && file_exists(d_path)) // Contains loop/etc. information file
   {
-    QStringList lines = ao_app->read_file(d_path).split("\n");
+    QStringList lines = ao_app.read_file(d_path).split("\n");
     bool seconds_mode = false;
-    foreach (QString line, lines)
+    for (QString line : lines)
     {
       QStringList args = line.split("=");
       if (args.size() < 2)
@@ -119,14 +119,14 @@ QString AOMusicPlayer::playStream(QString song, int streamId, bool loopEnabled, 
         m_loop_end[streamId] = bytes;
       }
     }
-    qDebug() << "Found data file for song" << song << "length" << BASS_ChannelGetLength(newstream, BASS_POS_BYTE) << "loop start" << m_loop_start[streamId] << "loop end" << m_loop_end[streamId];
+    kDebug() << "Found data file for song" << song << "length" << BASS_ChannelGetLength(newstream, BASS_POS_BYTE) << "loop start" << m_loop_start[streamId] << "loop end" << m_loop_end[streamId];
   }
 
   if (BASS_ChannelIsActive(m_stream_list[streamId]) == BASS_ACTIVE_PLAYING)
   {
     DWORD oldstream = m_stream_list[streamId];
 
-    if (effectFlags & SYNC_POS)
+    if (effectFlags & kal::SynchronizeMusicEffect)
     {
       BASS_ChannelLock(oldstream, true);
       // Sync it with the new sample
@@ -134,7 +134,7 @@ QString AOMusicPlayer::playStream(QString song, int streamId, bool loopEnabled, 
       BASS_ChannelLock(oldstream, false);
     }
 
-    if ((effectFlags & FADE_OUT) && m_volume[streamId] > 0)
+    if ((effectFlags & kal::FadeOutMusicEffect) && m_volume[streamId] > 0)
     {
       // Fade out the other sample and stop it (due to -1)
       BASS_ChannelSlideAttribute(oldstream, BASS_ATTRIB_VOL | BASS_SLIDE_LOG, -1, 4000);
@@ -151,7 +151,7 @@ QString AOMusicPlayer::playStream(QString song, int streamId, bool loopEnabled, 
 
   m_stream_list[streamId] = newstream;
   BASS_ChannelPlay(newstream, false);
-  if (effectFlags & FADE_IN)
+  if (effectFlags & kal::FadeInMusicEffect)
   {
     // Fade in our sample
     BASS_ChannelSetAttribute(newstream, BASS_ATTRIB_VOL, 0);
@@ -162,7 +162,7 @@ QString AOMusicPlayer::playStream(QString song, int streamId, bool loopEnabled, 
     this->setStreamVolume(m_volume[streamId], streamId);
   }
 
-  BASS_ChannelSetSync(newstream, BASS_SYNC_DEV_FAIL, 0, ao_app->BASSreset, 0);
+  BASS_ChannelSetSync(newstream, BASS_SYNC_DEV_FAIL, 0, ao_app.BASSreset, 0);
 
   this->setStreamLooping(loopEnabled, streamId); // Have to do this here due to any
                                                  // crossfading-related changes, etc.
@@ -208,7 +208,7 @@ void AOMusicPlayer::setStreamVolume(int value, int streamId)
 {
   if (!ensureValidStreamId(streamId))
   {
-    qWarning().noquote() << QObject::tr("Invalid stream ID '%2'").arg(streamId);
+    kWarning() << QObject::tr("Invalid stream ID '%2'").arg(streamId);
     return;
   }
 
@@ -242,7 +242,7 @@ void AOMusicPlayer::setStreamLooping(bool enabled, int streamId)
 {
   if (!ensureValidStreamId(streamId))
   {
-    qWarning().noquote() << QObject::tr("Invalid stream ID '%2'").arg(streamId);
+    kWarning() << QObject::tr("Invalid stream ID '%2'").arg(streamId);
     return;
   }
 

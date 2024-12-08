@@ -2,124 +2,123 @@
 
 #include "courtroom.h"
 #include "debug_functions.h"
+#include "gui/guiutils.h"
+#include "hardware_functions.h"
 #include "lobby.h"
+#include "network/packet/handshake_packets.h"
 #include "networkmanager.h"
 #include "options.h"
-#include "widgets/aooptionsdialog.h"
+#include "spritechatversion.h"
+#include "turnaboutversion.h"
+#include "widget/optionswindow.h"
 
 static QtMessageHandler original_message_handler;
-static AOApplication *message_handler_context;
 
-void message_handler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
-{
-  Q_EMIT message_handler_context->qt_log_message(type, context, msg);
-  original_message_handler(type, context, msg);
-}
+AOApplication *AOApplication::self = nullptr;
 
-AOApplication::AOApplication(QObject *parent)
+AOApplication::AOApplication(Options &options, kal::AssetPathResolver &assetPathResolver, QObject *parent)
     : QObject(parent)
+    , options(options)
+    , m_resolver(assetPathResolver)
 {
-  net_manager = new NetworkManager(this);
-  discord = new AttorneyOnline::Discord();
+  Q_ASSERT_X(self == nullptr, Q_FUNC_INFO, "Only one instance is allowed");
+  self = this;
 
-  asset_lookup_cache.reserve(2048);
+  original_message_handler = qInstallMessageHandler(&AOApplication::handleMessage);
 
-  message_handler_context = this;
-  original_message_handler = qInstallMessageHandler(message_handler);
+  m_discord = new DiscordClient(this);
+
+  connect(&m_network, &kal::NetworkManager::statusChanged, this, &AOApplication::processNetworkStatus);
+  connect(&m_network, &kal::NetworkManager::packetReceived, this, &AOApplication::processNetworkPacket);
+
+  createLobby(true);
 }
 
 AOApplication::~AOApplication()
 {
-  destruct_lobby();
-  destruct_courtroom();
-  delete discord;
+  disconnect(&m_network, &kal::NetworkManager::packetReceived, this, &AOApplication::processNetworkPacket);
+  disconnect(&m_network, &kal::NetworkManager::statusChanged, this, &AOApplication::processNetworkStatus);
+
+  destroyCourtroom();
+  destroyLoadingWindow();
+  destroyLobby();
+
+  m_network.disconnectFromServer();
+
   qInstallMessageHandler(original_message_handler);
+
+  self = nullptr;
 }
 
-bool AOApplication::is_lobby_constructed()
+void AOApplication::createLobby(bool visible)
 {
-  return w_lobby;
+  destroyLobby();
+  w_lobby = new Lobby(options, *this, m_resolver, m_network);
+  restoreWindowPosition(w_lobby);
+  w_lobby->setVisible(visible);
 }
 
-void AOApplication::construct_lobby()
+void AOApplication::createLoadingWindow(bool visible)
 {
-  if (is_lobby_constructed())
-  {
-    qWarning() << "lobby was attempted constructed when it already exists";
-    return;
-  }
-
-  w_lobby = new Lobby(this, net_manager);
-
-  centerOrMoveWidgetOnPrimaryScreen(w_lobby);
-
-  if (Options::getInstance().discordEnabled())
-  {
-    discord->state_lobby();
-  }
-
-  if (demo_server)
-  {
-    demo_server->deleteLater();
-  }
-  demo_server = new DemoServer(this);
-  w_lobby->show();
+  destroyLoadingWindow();
+  w_loading = new LoadingWindow(m_network);
+  kal::center_widget(w_loading);
+  w_loading->setVisible(visible);
 }
 
-void AOApplication::destruct_lobby()
+void AOApplication::createCourtroom(bool visible)
 {
-  if (!is_lobby_constructed())
-  {
-    qWarning() << "lobby was attempted destructed when it did not exist";
-    return;
-  }
+  destroyCourtroom();
+  w_courtroom = new Courtroom(options, *this, m_resolver, m_session);
+  restoreWindowPosition(w_courtroom);
+  w_courtroom->setWindowTitle(m_network.server().nameOrDefault());
 
-  delete w_lobby;
-  w_lobby = nullptr;
+  connect(w_courtroom, &Courtroom::on_back_to_lobby_clicked, this, [this]() {
+    w_courtroom->close();
+    m_network.disconnectFromServer();
+  });
+
+  w_courtroom->setVisible(visible);
 }
 
-bool AOApplication::is_courtroom_constructed()
+void AOApplication::destroyLobby()
 {
-  return w_courtroom;
-}
-
-void AOApplication::construct_courtroom()
-{
-  if (is_courtroom_constructed())
+  if (w_lobby)
   {
-    qWarning() << "courtroom was attempted constructed when it already exists";
-    return;
-  }
-
-  w_courtroom = new Courtroom(this);
-
-  centerOrMoveWidgetOnPrimaryScreen(w_courtroom);
-
-  if (demo_server != nullptr)
-  {
-    QObject::connect(demo_server, &DemoServer::skip_timers, w_courtroom, &Courtroom::skip_clocks);
-  }
-  else
-  {
-    qWarning() << "demo server did not exist during courtroom construction";
+    w_lobby->deleteLater();
+    w_lobby = nullptr;
   }
 }
 
-void AOApplication::destruct_courtroom()
+void AOApplication::destroyLoadingWindow()
 {
-  if (!is_courtroom_constructed())
+  if (w_loading)
   {
-    qWarning() << "courtroom was attempted destructed when it did not exist";
-    return;
+    w_loading->deleteLater();
+    w_loading = nullptr;
   }
-
-  delete w_courtroom;
-  w_courtroom = nullptr;
 }
 
-QString AOApplication::get_version_string()
+void AOApplication::destroyCourtroom()
 {
-  return QString::number(RELEASE) + "." + QString::number(MAJOR_VERSION) + "." + QString::number(MINOR_VERSION);
+  if (w_courtroom)
+  {
+    w_courtroom->deleteLater();
+    w_courtroom = nullptr;
+  }
+}
+
+void AOApplication::shipPacket(const kal::Packet &packet)
+{
+  m_network.shipPacket(packet);
+}
+
+void AOApplication::call_settings_menu()
+{
+  OptionsWindow dialog(options, m_resolver);
+  connect(&dialog, &OptionsWindow::reloadThemeRequest, w_courtroom, &Courtroom::on_reload_theme_clicked);
+  dialog.exec();
+  w_courtroom->playerList()->reloadPlayers();
 }
 
 QString AOApplication::find_image(QStringList p_list)
@@ -136,47 +135,76 @@ QString AOApplication::find_image(QStringList p_list)
   return image_path;
 }
 
-void AOApplication::server_disconnected()
+bool AOApplication::pointExistsOnScreen(const QPoint &point)
 {
-  if (is_courtroom_constructed())
+  for (QScreen *screen : QApplication::screens())
   {
-    if (w_courtroom->isVisible())
+    if (screen->availableGeometry().contains(point))
     {
-      call_notice(tr("Disconnected from server."));
+      return true;
     }
-    construct_lobby();
-    destruct_courtroom();
   }
-  Options::getInstance().setServerSubTheme(QString());
+  return false;
 }
 
-void AOApplication::loading_cancelled()
+void AOApplication::restoreWindowPosition(QWidget *window)
 {
-  destruct_courtroom();
-}
-
-void AOApplication::call_settings_menu()
-{
-  AOOptionsDialog *l_dialog = new AOOptionsDialog(this);
-  if (is_courtroom_constructed())
+  if (options.restoreWindowPositionEnabled())
   {
-    connect(l_dialog, &AOOptionsDialog::reloadThemeRequest, w_courtroom, &Courtroom::on_reload_theme_clicked);
+    const auto maybe_pos = options.windowPosition(window->objectName());
+    if (maybe_pos.has_value())
+    {
+      const auto pos = maybe_pos.value();
+      if (pointExistsOnScreen(pos))
+      {
+        window->move(pos);
+        return;
+      }
+    }
   }
 
-  if (is_lobby_constructed())
-  {}
-  l_dialog->exec();
-
-  if (is_courtroom_constructed())
-  {
-    w_courtroom->playerList()->reloadPlayers();
-  }
-
-  delete l_dialog;
+  kal::center_widget(window);
 }
 
 // Callback for when BASS device is lost
 // Only actually used for music syncs
+void AOApplication::initBASS()
+{
+  BASS_SetConfig(BASS_CONFIG_DEV_DEFAULT, 1);
+  BASS_Free();
+  // Change the default audio output device to be the one the user has given
+  // in his config.ini file for now.
+  unsigned int a = 0;
+  BASS_DEVICEINFO info;
+
+  if (options.audioOutputDevice() == "default")
+  {
+    BASS_Init(-1, 48000, BASS_DEVICE_LATENCY, nullptr, nullptr);
+    load_bass_plugins();
+  }
+  else
+  {
+    for (a = 0; BASS_GetDeviceInfo(a, &info); a++)
+    {
+      if (options.audioOutputDevice() == info.name)
+      {
+        BASS_SetDevice(a);
+        BASS_Init(static_cast<int>(a), 48000, BASS_DEVICE_LATENCY, nullptr, nullptr);
+        load_bass_plugins();
+        kInfo() << info.name << "was set as the default audio output device.";
+        return;
+      }
+    }
+    BASS_Init(-1, 48000, BASS_DEVICE_LATENCY, nullptr, nullptr);
+    load_bass_plugins();
+  }
+}
+
+void AOApplication::load_bass_plugins()
+{
+  BASS_PluginLoad("bassopus.dll", 0);
+}
+
 void CALLBACK AOApplication::BASSreset(HSTREAM handle, DWORD channel, DWORD data, void *user)
 {
   Q_UNUSED(handle);
@@ -193,80 +221,76 @@ void AOApplication::doBASSreset()
   load_bass_plugins();
 }
 
-void AOApplication::server_connected()
+void AOApplication::handleMessage(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
-  qInfo() << "Established connection to server.";
-
-  destruct_courtroom();
-  construct_courtroom();
-
-  courtroom_loaded = false;
+  Q_EMIT self->messageReceived(type, context, msg);
+  original_message_handler(type, context, msg);
 }
 
-void AOApplication::initBASS()
+void AOApplication::beginHandshake()
 {
-  BASS_SetConfig(BASS_CONFIG_DEV_DEFAULT, 1);
-  BASS_Free();
-  // Change the default audio output device to be the one the user has given
-  // in his config.ini file for now.
-  unsigned int a = 0;
-  BASS_DEVICEINFO info;
+  kal::HelloPacket packet;
+  packet.hwid = get_hdid();
+  packet.software_name = "AO2";
+  packet.software_version = kal::SpriteChat::softwareVersion();
+  packet.protocol_version = kal::Turnabout::softwareVersion();
+  shipPacket(packet);
+}
 
-  if (Options::getInstance().audioOutputDevice() == "default")
+void AOApplication::completeHandshake()
+{
+  w_courtroom->show();
+  destroyLoadingWindow();
+}
+
+void AOApplication::processNetworkStatus(kal::NetworkManager::Status status)
+{
+  switch (status)
   {
-    BASS_Init(-1, 48000, BASS_DEVICE_LATENCY, nullptr, nullptr);
-    load_bass_plugins();
-  }
-  else
-  {
-    for (a = 0; BASS_GetDeviceInfo(a, &info); a++)
+  case kal::NetworkManager::NotConnected:
+    m_session = kal::NetworkSession();
+    createLobby(true);
+    if (w_courtroom && w_courtroom->isVisible())
     {
-      if (Options::getInstance().audioOutputDevice() == info.name)
-      {
-        BASS_SetDevice(a);
-        BASS_Init(static_cast<int>(a), 48000, BASS_DEVICE_LATENCY, nullptr, nullptr);
-        load_bass_plugins();
-        qInfo() << info.name << "was set as the default audio output device.";
-        return;
-      }
+      w_courtroom->hide();
+      call_notice(tr("Lost connection to server."));
     }
-    BASS_Init(-1, 48000, BASS_DEVICE_LATENCY, nullptr, nullptr);
-    load_bass_plugins();
-  }
-}
-
-bool AOApplication::pointExistsOnScreen(QPoint point)
-{
-  for (QScreen *screen : QApplication::screens())
-  {
-    if (screen->availableGeometry().contains(point))
+    destroyCourtroom();
+    destroyLoadingWindow();
+    if (options.discordEnabled())
     {
-      return true;
+      m_discord->state_lobby();
     }
-  }
-  return false;
-}
+    break;
 
-void AOApplication::centerOrMoveWidgetOnPrimaryScreen(QWidget *widget)
-{
-  auto point = Options::getInstance().windowPosition(widget->objectName());
-  if (!Options::getInstance().restoreWindowPositionEnabled() || !point.has_value() || !pointExistsOnScreen(point.value()))
-  {
-    QRect geometry = QGuiApplication::primaryScreen()->geometry();
-    int x = (geometry.width() - widget->width()) / 2;
-    int y = (geometry.height() - widget->height()) / 2;
-    widget->move(x, y);
-  }
-  else
-  {
-    widget->move(point->x(), point->y());
+  case kal::NetworkManager::Connecting:
+    createLoadingWindow(true);
+    destroyLobby();
+    break;
+
+  case kal::NetworkManager::Connected:
+    createCourtroom(false);
+    { // authenticate
+      kal::HelloPacket packet;
+      packet.hwid = get_hdid();
+      packet.software_name = "AO2";
+      packet.software_version = kal::SpriteChat::softwareVersion();
+      packet.protocol_version = kal::Turnabout::softwareVersion();
+      shipPacket(packet);
+    }
+    break;
   }
 }
 
 #if (defined(_WIN32) || defined(_WIN64))
-void AOApplication::load_bass_plugins()
+void AOApplication::processNetworkPacket()
 {
-  BASS_PluginLoad("bassopus.dll", 0);
+  QQueue<kal::Packet> queue = m_network.takePacketQueue();
+  while (!queue.isEmpty())
+  {
+    kal::Packet packet = queue.dequeue();
+    packet.process(*this);
+  }
 }
 #elif defined __APPLE__
 void AOApplication::load_bass_plugins()

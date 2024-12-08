@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aoapplication.h"
+#include "assetpathresolver.h"
 
 #include <bass.h>
 #include <bassopus.h>
@@ -9,14 +9,12 @@
 #include <QElapsedTimer>
 #include <QWidget>
 
-#include <string.h>
-
 class AOBlipPlayer
 {
 public:
   static constexpr int STREAM_COUNT = 5;
 
-  AOBlipPlayer(AOApplication *ao_app);
+  AOBlipPlayer(kal::AssetPathResolver &assetPacketTransport);
 
   void setVolume(int value);
   void setMuted(bool enabled);
@@ -26,7 +24,7 @@ public:
   void playBlip();
 
 private:
-  AOApplication *ao_app;
+  kal::AssetPathResolver &m_resolver;
 
   int m_volume = 0;
   bool m_muted = false;

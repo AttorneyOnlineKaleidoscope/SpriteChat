@@ -1,21 +1,23 @@
 #include "aoevidencebutton.h"
 
 #include "file_functions.h"
+#include "spritechatcommon.h"
 
-AOEvidenceButton::AOEvidenceButton(int id, int width, int height, AOApplication *ao_app, QWidget *parent)
+AOEvidenceButton::AOEvidenceButton(int id, int width, int height, Options &options, kal::AssetPathResolver &assetPathResolver, QWidget *parent)
     : QPushButton(parent)
-    , ao_app(ao_app)
+    , options(options)
+    , m_resolver(assetPathResolver)
     , m_id(id)
 {
   resize(width, height);
 
-  ui_selected = new AOImage(ao_app, this);
+  ui_selected = new AOImage(assetPathResolver, this);
   ui_selected->resize(width, height);
   ui_selected->setImage("evidence_selected");
   ui_selected->setAttribute(Qt::WA_TransparentForMouseEvents);
   ui_selected->hide();
 
-  ui_selector = new AOImage(ao_app, this);
+  ui_selector = new AOImage(assetPathResolver, this);
   ui_selector->resize(width, height);
   ui_selector->setImage("evidence_selector");
   ui_selector->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -24,49 +26,14 @@ AOEvidenceButton::AOEvidenceButton(int id, int width, int height, AOApplication 
   connect(this, &AOEvidenceButton::clicked, this, &AOEvidenceButton::on_clicked);
 }
 
-void AOEvidenceButton::setImage(QString fileName)
+void AOEvidenceButton::setEvidenceImage(QString fileName)
 {
-  QString image_path = ao_app->get_real_path(ao_app->get_evidence_path(fileName));
-  if (file_exists(fileName))
-  {
-    setText("");
-    setStyleSheet("QPushButton { border-image: url(\"" + fileName +
-                  "\") 0 0 0 0 stretch stretch; }"
-                  "QToolTip { color: #000000; background-color: #ffffff; border: 0px; }");
-  }
-  else if (file_exists(image_path))
-  {
-    setText("");
-    setStyleSheet("QPushButton { border-image: url(\"" + image_path +
-                  "\") 0 0 0 0 stretch stretch; }"
-                  "QToolTip { color: #000000; background-color: #ffffff; border: 0px; }");
-  }
-  else
-  {
-    setText(fileName);
-    setStyleSheet("QPushButton { border-image: url(); }"
-                  "QToolTip { background-image: url(); color: #000000; "
-                  "background-color: #ffffff; border: 0px; }");
-  }
+  setImage(m_resolver.evidenceFilePath(fileName));
 }
 
 void AOEvidenceButton::setThemeImage(QString fileName)
 {
-  QString theme_image_path = ao_app->get_real_path(ao_app->get_theme_path(fileName));
-  QString default_image_path = ao_app->get_real_path(ao_app->get_theme_path(fileName, ao_app->default_theme));
-
-  QString final_image_path;
-
-  if (file_exists(theme_image_path))
-  {
-    final_image_path = theme_image_path;
-  }
-  else
-  {
-    final_image_path = default_image_path;
-  }
-
-  setImage(final_image_path);
+  setImage(m_resolver.themeFilePath(fileName, options.theme()));
 }
 
 void AOEvidenceButton::setSelected(bool p_selected)
@@ -92,11 +59,19 @@ void AOEvidenceButton::mouseDoubleClickEvent(QMouseEvent *e)
   Q_EMIT evidenceDoubleClicked(m_id);
 }
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-void AOEvidenceButton::enterEvent(QEvent *e)
-#else
+void AOEvidenceButton::setImage(const kal::MaybePath &fileName)
+{
+  if (fileName)
+  {
+    setStyleSheet(QStringLiteral(R"(QPushButton { border-image: url("%1") 0 0 0 0 stretch stretch; }")").arg(fileName.value()));
+  }
+  else
+  {
+    setStyleSheet("QPushButton { border-image: url(); background-color: #ffffff; border: 0px; }");
+  }
+}
+
 void AOEvidenceButton::enterEvent(QEnterEvent *e)
-#endif
 {
   ui_selector->show();
 

@@ -4,9 +4,10 @@
 
 #include <QDebug>
 
-AOEmoteButton::AOEmoteButton(int id, int width, int height, AOApplication *ao_app, QWidget *parent)
+AOEmoteButton::AOEmoteButton(int id, int width, int height, AOApplication &ao_app, kal::AssetPathResolver &assetPathResolver, QWidget *parent)
     : QPushButton(parent)
     , ao_app(ao_app)
+    , m_resolver(assetPathResolver)
     , m_id(id)
 {
   resize(width, height);
@@ -44,7 +45,7 @@ void AOEmoteButton::setImage(QString character, int emoteId, bool enabled)
   static const QStringList SUFFIX_LIST{"_off", "_on"};
   for (const QString &suffix : SUFFIX_LIST)
   {
-    suffixedPaths.append(ao_app->get_image_suffix(ao_app->get_character_path(character, "emotions/button" + emotion_number + suffix)));
+    suffixedPaths.append(m_resolver.characterFilePath(character, "emotions/button" + emotion_number + suffix, kal::AnimatedImageAssetType).value_or(QString()));
   }
 
   QString image = suffixedPaths[static_cast<int>(enabled)];
@@ -68,7 +69,7 @@ void AOEmoteButton::setImage(QString character, int emoteId, bool enabled)
   }
   else
   {
-    QString emote_comment = ao_app->get_emote_comment(character, emoteId);
+    QString emote_comment = ao_app.get_emote_comment(character, emoteId);
     setText(emote_comment);
     setStyleSheet("QPushButton { border-image: url(); }"
                   "QToolTip { background-image: url(); color: #000000; "

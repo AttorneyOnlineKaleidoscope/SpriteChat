@@ -1,63 +1,71 @@
 #pragma once
 
-#include "aoapplication.h"
-#include "aopacket.h"
-#include "network/websocketconnection.h"
+#include "network/packet.h"
+#include "network/packettransport.h"
+#include "network/serverinfo.h"
+#include "network/socketclient.h"
 
-#include <QDnsLookup>
-#include <QNetworkAccessManager>
-#include <QTime>
+#include <QElapsedTimer>
+#include <QObject>
+#include <QQueue>
 #include <QTimer>
-#include <QtWebSockets/QWebSocket>
 
-#include <cstring>
-
-enum MSDocumentType
+namespace kal
 {
-  PrivacyPolicy,
-  Motd,
-  ClientVersion
-};
-
-class NetworkManager : public QObject
+class NetworkManager : public QObject, public PacketTransport
 {
   Q_OBJECT
 
 public:
-  explicit NetworkManager(AOApplication *parent);
+  enum Status
+  {
+    NotConnected,
+    Connecting,
+    Connected,
+  };
 
-  void connect_to_server(ServerInfo p_server);
-  void disconnect_from_server();
+  explicit NetworkManager(QObject *parent = nullptr);
+  ~NetworkManager();
 
-  QString get_user_agent() const;
+  Status status() const;
+
+  kal::ServerInfo server() const;
+  void setServer(const kal::ServerInfo &server);
+  void setAndConnectToServer(const kal::ServerInfo &server);
+
+  int latency() const;
+
+  void shipPacket(const Packet &packet) override;
+
+  QQueue<Packet> takePacketQueue();
 
 public Q_SLOTS:
-  void get_server_list();
-  void ship_server_packet(AOPacket packet);
-  void join_to_server();
-  void handle_server_packet(AOPacket packet);
-
-  void request_document(MSDocumentType document_type, const std::function<void(QString)> &cb);
-  void send_heartbeat();
+  void connectToServer();
+  void disconnectFromServer();
 
 Q_SIGNALS:
-  void server_connected(bool state);
-
-private Q_SLOTS:
-  void ms_request_finished(QNetworkReply *reply);
+  void statusChanged(Status);
+  void packetReceived();
+  void latencyChanged(int);
 
 private:
-  AOApplication *ao_app;
-  QNetworkAccessManager *http;
+  Status m_status = NotConnected;
+  kal::ServerInfo m_server;
+  SocketClient *m_socket = nullptr;
+  QQueue<Packet> m_queue;
+  QTimer *m_ping_timer = nullptr;
+  QElapsedTimer m_latency_timer;
+  int m_latency = 0;
 
-  WebSocketConnection *m_connection = nullptr;
+  void setStatus(Status status);
+  void startPinging();
+  void stopPinging();
 
-  QTimer *heartbeat_timer;
-
-  const QString DEFAULT_MS_BASEURL = "http://servers.aceattorneyonline.com";
-  QString ms_baseurl = DEFAULT_MS_BASEURL;
-
-  const int heartbeat_interval = 60 * 5 * 1000;
-
-  unsigned int s_decryptor = 5;
+private Q_SLOTS:
+  void checkSocketState();
+  void processSocketError(const QString &error);
+  void processPacketQueue();
+  void ping();
+  void updateLatency();
 };
+} // namespace kal

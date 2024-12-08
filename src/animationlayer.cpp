@@ -2,6 +2,7 @@
 
 #include "aoapplication.h"
 #include "options.h"
+#include "spritechatcommon.h"
 
 #include <QRectF>
 #include <QThreadPool>
@@ -47,7 +48,7 @@ void AnimationLayer::setFileName(QString fileName)
   if (m_file_name.trimmed().isEmpty())
   {
 #ifdef DEBUG_MOVIE
-    qWarning() << "AnimationLayer::setFileName called with empty string";
+    kWarning() << "AnimationLayer::setFileName called with empty string";
 #endif
     m_file_name = QObject::tr("Invalid File");
   }
@@ -59,7 +60,7 @@ void AnimationLayer::startPlayback()
   if (m_processing)
   {
 #ifdef DEBUG_MOVIE
-    qWarning() << "AnimationLayer::startPlayback called while already processing";
+    kWarning() << "AnimationLayer::startPlayback called while already processing";
 #endif
     return;
   }
@@ -95,7 +96,7 @@ void AnimationLayer::pausePlayback(bool enabled)
   if (m_pause == enabled)
   {
 #ifdef DEBUG_MOVIE
-    qWarning() << "AnimationLayer::pausePlayback called with identical state";
+    kWarning() << "AnimationLayer::pausePlayback called with identical state";
 #endif
     return;
   }
@@ -127,7 +128,7 @@ void AnimationLayer::jumpToFrame(int number)
   if (number < 0 || number >= m_frame_count)
   {
 #ifdef DEBUG_MOVIE
-    qWarning() << "AnimationLayer::jumpToFrame failed to jump to frame" << number << "(file:" << m_file_name << ", frame count:" << m_frame_count << ")";
+    kWarning() << "AnimationLayer::jumpToFrame failed to jump to frame" << number << "(file:" << m_file_name << ", frame count:" << m_frame_count << ")";
 #endif
     return;
   }
@@ -374,9 +375,10 @@ void AnimationLayer::frameTicker()
   }
 }
 
-CharacterAnimationLayer::CharacterAnimationLayer(AOApplication *ao_app, QWidget *parent)
+CharacterAnimationLayer::CharacterAnimationLayer(AOApplication &ao_app, AssetPathResolver &assetPathResolver, QWidget *parent)
     : AnimationLayer(parent)
     , ao_app(ao_app)
+    , m_resolver(assetPathResolver)
 {
   m_duration_timer = new QTimer(this);
   m_duration_timer->setSingleShot(true);
@@ -387,10 +389,10 @@ CharacterAnimationLayer::CharacterAnimationLayer(AOApplication *ao_app, QWidget 
   connect(this, &CharacterAnimationLayer::finishedPlayback, this, &CharacterAnimationLayer::notifyEmotePlaybackFinished);
 }
 
-void CharacterAnimationLayer::loadCharacterEmote(QString character, QString fileName, EmoteType emoteType, int durationLimit)
+void CharacterAnimationLayer::loadCharacterEmote(QString character, QString fileName, kal::EmoteType emoteType, int durationLimit)
 {
-  auto is_dialog_emote = [](EmoteType emoteType) {
-    return emoteType == IdleEmote || emoteType == TalkEmote;
+  auto is_dialog_emote = [](kal::EmoteType emoteType) {
+    return emoteType == kal::IdleEmote || emoteType == kal::TalkEmote;
   };
 
   bool synchronize_frame = false;
@@ -414,54 +416,58 @@ void CharacterAnimationLayer::loadCharacterEmote(QString character, QString file
   default:
     break;
 
-  case PreEmote:
+  case kal::PreEmote:
     play_once = true;
     break;
 
-  case IdleEmote:
+  case kal::IdleEmote:
     prefixes << QStringLiteral("(a)") << QStringLiteral("(a)/");
     placeholder_fallback = true;
     break;
 
-  case TalkEmote:
+  case kal::TalkEmote:
     prefixes << QStringLiteral("(b)") << QStringLiteral("(b)/");
     placeholder_fallback = true;
     break;
 
-  case PostEmote:
+  case kal::PostEmote:
     prefixes << QStringLiteral("(c)") << QStringLiteral("(c)/");
     break;
   }
 
-  QVector<VPath> path_list;
-  QVector<QString> prefixed_emote_list;
-  for (const QString &prefix : qAsConst(prefixes))
-  {
-    path_list << ao_app->get_character_path(character, prefix + m_emote);
-    prefixed_emote_list << prefix + m_emote;
-  }
-  path_list << ao_app->get_character_path(character, m_emote);
-  prefixed_emote_list << m_emote;
-
-  if (placeholder_fallback)
-  {
-    path_list << ao_app->get_character_path(character, QStringLiteral("placeholder"));
-    prefixed_emote_list << QStringLiteral("placeholder");
-    path_list << ao_app->get_theme_path("placeholder", ao_app->default_theme);
-    prefixed_emote_list << QStringLiteral("placeholder");
-  }
-
   int index = -1;
-  QString file_path = ao_app->get_image_path(path_list, index);
+  kal::MaybePath path = [&]() -> kal::MaybePath {
+    for (int i = 0; i < prefixes.size(); ++i)
+    {
+      if (kal::MaybePath path = m_resolver.characterFilePath(character, prefixes.at(i) % fileName, kal::AnimatedImageAssetType))
+      {
+        index = i;
+        return path;
+      }
+    }
+
+    if (kal::MaybePath path = m_resolver.characterFilePath(character, fileName, kal::AnimatedImageAssetType))
+    {
+      return path;
+    }
+
+    if (placeholder_fallback)
+    {
+      return m_resolver.currentThemeFilePath(QStringLiteral("placeholder"), kal::ImageAssetType);
+    }
+
+    return kal::MaybePath();
+  }();
+
   if (index != -1)
   {
-    m_resolved_emote = prefixed_emote_list[index];
+    m_resolved_emote = prefixes.at(index) % m_emote;
   }
 
-  setFileName(file_path);
+  setFileName(path.value_or(QString()));
   setPlayOnce(play_once);
-  setResizeMode(ao_app->get_scaling(ao_app->get_emote_property(character, fileName, "scaling")));
-  setStretchToFit(ao_app->get_emote_property(character, fileName, "stretch").startsWith("true"));
+  setResizeMode(ao_app.get_scaling(ao_app.get_emote_property(character, fileName, "scaling")));
+  setStretchToFit(ao_app.get_emote_property(character, fileName, "stretch").startsWith("true"));
   if (synchronize_frame && previous_frame_count == frameCount())
   {
     jumpToFrame(previous_frame_number);
@@ -523,7 +529,7 @@ void CharacterAnimationLayer::onPlaybackStopped()
 
 void CharacterAnimationLayer::notifyEmotePlaybackFinished()
 {
-  if (m_emote_type == PreEmote || m_emote_type == PostEmote)
+  if (m_emote_type == kal::PreEmote || m_emote_type == kal::PostEmote)
   {
     Q_EMIT finishedPreOrPostEmotePlayback();
   }
@@ -531,7 +537,7 @@ void CharacterAnimationLayer::notifyEmotePlaybackFinished()
 
 void CharacterAnimationLayer::onPlaybackFinished()
 {
-  if (m_emote_type == PreEmote || m_emote_type == PostEmote)
+  if (m_emote_type == kal::PreEmote || m_emote_type == kal::PostEmote)
   {
     if (m_duration_timer->isActive())
     {
@@ -579,48 +585,47 @@ void CharacterAnimationLayer::notifyFrameEffect(int frameNumber)
   }
 }
 
-BackgroundAnimationLayer::BackgroundAnimationLayer(AOApplication *ao_app, QWidget *parent)
+BackgroundAnimationLayer::BackgroundAnimationLayer(AOApplication &ao_app, AssetPathResolver &assetPathResolver, QWidget *parent)
     : AnimationLayer(parent)
     , ao_app(ao_app)
+    , m_resolver(assetPathResolver)
 {}
 
-void BackgroundAnimationLayer::loadAndPlayAnimation(QString fileName)
+void BackgroundAnimationLayer::loadAndPlayAnimation(const QString &background, QString fileName)
 {
-  QString file_path = ao_app->get_image_suffix(ao_app->get_background_path(fileName));
-#ifdef DEBUG_MOVIE
-  if (file_path.isEmpty())
+  kal::MaybePath file_path = m_resolver.backgroundFilePath(background, fileName, kal::AnimatedImageAssetType);
+  if (file_path)
   {
-    qWarning() << "[BackgroundLayer] Failed to load background:" << fileName;
-  }
-  else if (file_path == this->fileName())
-  {
-    return;
+    if (file_path == this->fileName())
+    {
+      return;
+    }
+
+    kInfo() << "[BackgroundLayer] Loading background" << file_path.value();
   }
   else
   {
-    qInfo() << "[BackgroundLayer] Loading background:" << file_path;
+    kWarning() << "[BackgroundLayer] Failed to load background" << background << fileName;
   }
-#endif
 
-  bool is_different_file = file_path != this->fileName();
-  if (is_different_file)
+  QString design_path;
+  if (auto path = m_resolver.backgroundFilePath(background, "design.ini"))
   {
-    setFileName(file_path);
+    design_path = path.value();
   }
-
-  VPath design_path = ao_app->get_background_path("design.ini");
-  setResizeMode(ao_app->get_scaling(ao_app->read_design_ini("scaling", design_path)));
-  setStretchToFit(ao_app->read_design_ini("stretch", design_path).startsWith("true"));
-
-  if (is_different_file)
+  else
   {
-    startPlayback();
+    kWarning() << "[BackgroundLayer] Failed to load design.ini for background" << background;
   }
+  setResizeMode(ao_app.get_scaling(ao_app.read_design_ini("scaling", design_path)));
+  setStretchToFit(ao_app.read_design_ini("stretch", design_path).startsWith("true"));
+  startPlayback();
 }
 
-SplashAnimationLayer::SplashAnimationLayer(AOApplication *ao_app, QWidget *parent)
+SplashAnimationLayer::SplashAnimationLayer(AOApplication &ao_app, kal::AssetPathResolver &assetPathResolver, QWidget *parent)
     : AnimationLayer(parent)
     , ao_app(ao_app)
+    , m_resolver(assetPathResolver)
 {
   connect(this, &SplashAnimationLayer::startedPlayback, this, &SplashAnimationLayer::show);
   connect(this, &SplashAnimationLayer::stoppedPlayback, this, &SplashAnimationLayer::hide);
@@ -628,13 +633,12 @@ SplashAnimationLayer::SplashAnimationLayer(AOApplication *ao_app, QWidget *paren
 
 void SplashAnimationLayer::loadAndPlayAnimation(QString p_filename, QString p_charname, QString p_miscname)
 {
-  QString file_path = ao_app->get_image(p_filename, Options::getInstance().theme(), Options::getInstance().subTheme(), ao_app->default_theme, p_miscname, p_charname, "placeholder");
-  setFileName(file_path);
-  setResizeMode(ao_app->get_misc_scaling(p_miscname));
+  setFileName(m_resolver.currentThemeFilePath(p_filename, kal::AnimatedImageAssetType).value_or(QString()));
+  setResizeMode(ao_app.get_chatbox_scaling(p_miscname));
   startPlayback();
 }
 
-EffectAnimationLayer::EffectAnimationLayer(AOApplication *ao_app, QWidget *parent)
+EffectAnimationLayer::EffectAnimationLayer(AOApplication &ao_app, QWidget *parent)
     : AnimationLayer(parent)
     , ao_app(ao_app)
 {
@@ -662,9 +666,10 @@ void EffectAnimationLayer::maybeHide()
   }
 }
 
-InterfaceAnimationLayer::InterfaceAnimationLayer(AOApplication *ao_app, QWidget *parent)
+InterfaceAnimationLayer::InterfaceAnimationLayer(AOApplication &ao_app, kal::AssetPathResolver &assetPathResolver, QWidget *parent)
     : AnimationLayer(parent)
     , ao_app(ao_app)
+    , m_resolver(assetPathResolver)
 {
   setStretchToFit(true);
 
@@ -674,30 +679,7 @@ InterfaceAnimationLayer::InterfaceAnimationLayer(AOApplication *ao_app, QWidget 
 
 void InterfaceAnimationLayer::loadAndPlayAnimation(QString fileName, QString miscName)
 {
-  QString file_path = ao_app->get_image(fileName, Options::getInstance().theme(), Options::getInstance().subTheme(), ao_app->default_theme, miscName);
-  setFileName(file_path);
-  startPlayback();
-}
-
-StickerAnimationLayer::StickerAnimationLayer(AOApplication *ao_app, QWidget *parent)
-    : AnimationLayer(parent)
-    , ao_app(ao_app)
-{
-  connect(this, &StickerAnimationLayer::startedPlayback, this, &StickerAnimationLayer::show);
-  connect(this, &StickerAnimationLayer::stoppedPlayback, this, &StickerAnimationLayer::hide);
-}
-
-void StickerAnimationLayer::loadAndPlayAnimation(QString fileName)
-{
-  QString misc_file; // FIXME this is a bad name
-  if (Options::getInstance().customChatboxEnabled())
-  {
-    misc_file = ao_app->get_chat(fileName);
-  }
-
-  QString file_path = ao_app->get_image("sticker/" + fileName, Options::getInstance().theme(), Options::getInstance().subTheme(), ao_app->default_theme, misc_file);
-  setFileName(file_path);
-  setResizeMode(ao_app->get_misc_scaling(misc_file));
+  setFileName(m_resolver.currentThemeFilePath(fileName, kal::AnimatedImageAssetType).value_or(QString()));
   startPlayback();
 }
 } // namespace kal

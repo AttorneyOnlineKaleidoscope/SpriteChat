@@ -28,7 +28,7 @@ void ScreenSlideTimer::addAnimation(QAbstractAnimation *animation)
 {
   if (m_running)
   {
-    qWarning() << "Cannot add animations while transition is in progress";
+    kWarning() << "Cannot add animations while transition is in progress";
     return;
   }
   m_group->addAnimation(animation);
@@ -38,7 +38,7 @@ void ScreenSlideTimer::start()
 {
   if (m_running)
   {
-    qWarning() << "Transition already in progress";
+    kWarning() << "Transition already in progress";
     return;
   }
   m_running = true;

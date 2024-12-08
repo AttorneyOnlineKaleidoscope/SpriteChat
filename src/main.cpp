@@ -1,9 +1,11 @@
-
 #include "aoapplication.h"
-
+#include "assetpathresolver.h"
 #include "courtroom.h"
+#include "debug_functions.h"
 #include "file_functions.h"
 #include "lobby.h"
+#include "pathresolver.h"
+#include "spritechatversion.h"
 
 #include <QDebug>
 #include <QDirIterator>
@@ -16,89 +18,93 @@ int main(int argc, char *argv[])
 {
   qSetMessagePattern("%{type}: %{if-category}%{category}: %{endif}%{message}");
 
-  qRegisterMetaType<AOPacket>();
-
-  QApplication app(argc, argv);
-
-#ifdef ANDROID
-  if (QtAndroid::checkPermission("android.permission.READ_EXTERNAL_STORAGE") == QtAndroid::PermissionResult::Denied)
-  {
-    QtAndroid::requestPermissionsSync({"android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE"});
-  }
+#ifdef QT_DEBUG
+  qSetMessagePattern("file://%{file}:%{line}\n[%{time h:mm:ss.zzz}][%{if-debug}D%{endif}%{if-info}I%{endif}%{if-warning}W%{endif}%{if-critical}C%{endif}%{if-fatal}F%{endif}]%{function}: %{message}");
 #endif
 
-  AOApplication main_app;
-  QApplication::setApplicationVersion(AOApplication::get_version_string());
-  QApplication::setApplicationDisplayName(QObject::tr("Attorney Online %1").arg(QApplication::applicationVersion()));
+  QApplication app(argc, argv);
+  QApplication::setApplicationVersion(kal::SpriteChat::softwareVersionString());
+  QApplication::setApplicationDisplayName(QStringLiteral("%1 (%2)").arg(kal::SpriteChat::softwareName(), kal::SpriteChat::softwareVersionString()));
+#ifdef QT_DEBUG
+  QApplication::setWindowIcon(QIcon(":/logo.png"));
+#endif
 
-  QResource::registerResource(main_app.get_asset("themes/" + Options::getInstance().theme() + ".rcc"));
-
-  QFont main_font = QApplication::font();
-  main_app.default_font = main_font;
-
-  QFont new_font = main_font;
-  int new_font_size = main_app.default_font.pointSize() * Options::getInstance().themeScalingFactor();
-  new_font.setPointSize(new_font_size);
-  QApplication::setFont(new_font);
-
-  QStringList font_paths;
-  font_paths.append(get_base_path());
-  font_paths.append(Options::getInstance().mountPaths());
-
-  for (const QString &path : font_paths)
+  int exit_code = 0;
   {
-    QDirIterator it(path + "fonts", QDirIterator::Subdirectories);
-    while (it.hasNext())
+    Options options;
+
+    QFont scaled_font = QApplication::font();
+    scaled_font.setPointSize(scaled_font.pointSize() * options.themeScalingFactor());
+    QApplication::setFont(scaled_font);
+
+    QStringList font_paths;
+    font_paths.append(kal::AssetPathResolver::applicationAssetPath());
+    font_paths.append(options.mountPaths());
+
+    for (const QString &path : font_paths)
     {
-      QFontDatabase::addApplicationFont(it.next());
+      QDir dir(path);
+      dir.setPath(dir.absoluteFilePath("fonts"));
+      for (const QString &file : dir.entryList(QDir::Files | QDir::NoDotAndDotDot))
+      {
+        kInfo() << "Loading font" << file;
+        QFontDatabase::addApplicationFont(dir.absoluteFilePath(file));
+      }
     }
-  }
 
-  QStringList expected_formats{"webp", "apng", "gif"};
-  for (const QByteArray &i_format : QImageReader::supportedImageFormats())
-  {
-    if (expected_formats.contains(i_format, Qt::CaseInsensitive))
+    QStringList expected_formats = kal::AssetPathResolver::animatedImageSuffixList();
+    for (const QByteArray &i_format : QImageReader::supportedImageFormats())
     {
-      expected_formats.removeAll(i_format.toLower());
+      if (expected_formats.contains(i_format, Qt::CaseInsensitive))
+      {
+        expected_formats.removeAll(i_format.toLower());
+      }
     }
+
+    if (!expected_formats.isEmpty())
+    {
+      call_error("Missing image formats: <b>" + expected_formats.join(", ") + "</b>.<br /><br /> Please make sure you have installed the application properly.");
+    }
+
+    QString p_language = options.language();
+    if (p_language.trimmed().isEmpty())
+    {
+      p_language = QLocale::system().name();
+    }
+
+    QTranslator qtTranslator;
+    if (!qtTranslator.load("qt_" + p_language, QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
+    {
+      kDebug() << "Failed to load translation qt_" + p_language;
+    }
+    else
+    {
+      QApplication::installTranslator(&qtTranslator);
+    }
+
+    QTranslator appTranslator;
+    if (appTranslator.load("ao_" + p_language, ":/resource/translations/"))
+    {
+      QApplication::installTranslator(&appTranslator);
+      kInfo() << "Loaded translation ao_" + p_language;
+    }
+    else
+    {
+      kWarning() << "Failed to load translation ao_" + p_language;
+    }
+
+    kal::PathResolver path_resolver;
+    kal::AssetPathResolver asset_path_resolver(path_resolver, options);
+    AOApplication main_app(options, asset_path_resolver);
+    main_app.default_font = scaled_font;
+
+    if (auto path = asset_path_resolver.currentThemeFilePath("themes/" % options.theme() % ".rcc"))
+    {
+      QResource::registerResource(path.value());
+    }
+
+    exit_code = app.exec();
   }
 
-  if (!expected_formats.isEmpty())
-  {
-    call_error("Missing image formats: <b>" + expected_formats.join(", ") + "</b>.<br /><br /> Please make sure you have installed the application properly.");
-  }
-
-  QString p_language = Options::getInstance().language();
-  if (p_language.trimmed().isEmpty())
-  {
-    p_language = QLocale::system().name();
-  }
-
-  QTranslator qtTranslator;
-  if (!qtTranslator.load("qt_" + p_language, QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
-  {
-    qDebug() << "Failed to load translation qt_" + p_language;
-  }
-  else
-  {
-    QApplication::installTranslator(&qtTranslator);
-  }
-
-  QTranslator appTranslator;
-  if (!appTranslator.load("ao_" + p_language, ":/data/translations/"))
-  {
-    qDebug() << "Failed to load translation ao_" + p_language;
-  }
-  else
-  {
-    QApplication::installTranslator(&appTranslator);
-    qDebug() << ":/data/translations/ao_" + p_language;
-  }
-
-  main_app.construct_lobby();
-  main_app.net_manager->get_server_list();
-  main_app.net_manager->send_heartbeat();
-  main_app.w_lobby->show();
-
-  return QApplication::exec();
+  return exit_code;
 }

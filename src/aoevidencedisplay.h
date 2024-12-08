@@ -13,7 +13,7 @@ class AOEvidenceDisplay : public QLabel
   Q_OBJECT
 
 public:
-  AOEvidenceDisplay(AOApplication *p_ao_app, QWidget *p_parent = nullptr);
+  AOEvidenceDisplay(AOApplication &p_ao_app, kal::AssetPathResolver &assetPathResolver, QWidget *p_parent = nullptr);
 
   void show_evidence(int p_index, QString p_evidence_image, bool is_left_side, int p_volume);
   void reset();
@@ -24,7 +24,8 @@ Q_SIGNALS:
   void show_evidence_details(int index);
 
 private:
-  AOApplication *ao_app;
+  AOApplication &ao_app;
+  kal::AssetPathResolver &m_resolver;
 
   int m_last_evidence_index = -1;
   AOSfxPlayer *m_sfx_player;

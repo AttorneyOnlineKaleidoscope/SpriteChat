@@ -1,11 +1,16 @@
 #pragma once
 
-#include "aopacket.h"
+#include "assetpathresolver.h"
 #include "datatypes.h"
-#include "demoserver.h"
 #include "discord_rich_presence.h"
-#include "serverdata.h"
-#include "widgets/aooptionsdialog.h"
+#include "gameglobal.h"
+#include "network/cargohandler.h"
+#include "network/packet.h"
+#include "network/packettransport.h"
+#include "networkmanager.h"
+#include "networksession.h"
+#include "widget/optionswindow.h"
+#include "widget/loadingwindow.h"
 
 #include <bass.h>
 
@@ -15,6 +20,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QList>
 #include <QObject>
 #include <QRect>
 #include <QScreen>
@@ -23,115 +29,35 @@
 #include <QStringList>
 #include <QTextStream>
 #include <QTime>
-#include <QVector>
+#include <QVersionNumber>
 
-class NetworkManager;
 class Lobby;
 class Courtroom;
 class Options;
 
-class VPath : QString
-{
-  using QString::QString;
-
-public:
-  explicit VPath(const QString &str)
-      : QString(str)
-  {}
-  inline const QString &toQString() const { return *this; }
-  inline bool operator==(const VPath &str) const { return this->toQString() == str.toQString(); }
-  inline VPath operator+(const VPath &str) const { return VPath(this->toQString() + str.toQString()); }
-};
-
-inline size_t qHash(const VPath &key, uint seed = qGlobalQHashSeed())
-{
-  return qHash(key.toQString(), seed);
-}
-
-class AOApplication : public QObject
+class AOApplication : public QObject, public kal::PacketTransport, private kal::CargoHandler
 {
   Q_OBJECT
 
 public:
-  AOApplication(QObject *parent = nullptr);
+  static void load_bass_plugins();
+  static void CALLBACK BASSreset(HSTREAM handle, DWORD channel, DWORD data, void *user);
+  static void doBASSreset();
+
+  explicit AOApplication(Options &options, kal::AssetPathResolver &assetPathResolver, QObject *parent = nullptr);
   ~AOApplication();
 
-  NetworkManager *net_manager;
-  Lobby *w_lobby = nullptr;
-  Courtroom *w_courtroom = nullptr;
-  AttorneyOnline::Discord *discord;
+  DiscordClient *m_discord = nullptr;
 
   QFont default_font;
 
-  bool is_lobby_constructed();
-  void construct_lobby();
-  void destruct_lobby();
-
-  bool is_courtroom_constructed();
-  void construct_courtroom();
-  void destruct_courtroom();
-
-  void server_packet_received(AOPacket p_packet);
-
-  void send_server_packet(AOPacket p_packet);
+  void shipPacket(const kal::Packet &packet) override;
 
   void call_settings_menu();
 
-  qint64 latency = 0;
-  QString window_title;
+  QString get_config_value(const QString &fileName, const QString &identifier);
 
-  /// Stores everything related to the server the client is connected to, if
-  /// any.
-  server::ServerData m_serverdata;
-
-  ///////////////loading info///////////////////
-
-  // client ID. Not useful, to be removed eventually
-  int client_id = 0;
-
-  /// Used for a fancy loading bar upon joining a server.
-  int generated_chars = 0;
-
-  bool courtroom_loaded = false;
-
-  /**
-   * @brief Returns the version string of the software.
-   *
-   * @return The string "X.Y.Z", where X is the release of the software (usually
-   * '2'), Y is the major version, and Z is the minor version.
-   */
-  static QString get_version_string();
-
-  static const int RELEASE = 2;
-  static const int MAJOR_VERSION = 11;
-  static const int MINOR_VERSION = 0;
-
-  void set_server_list(QVector<ServerInfo> &servers) { server_list = servers; }
-  QVector<ServerInfo> &get_server_list() { return server_list; }
-
-  // implementation in path_functions.cpp
-  VPath get_theme_path(QString p_file, QString p_theme = QString());
-  VPath get_character_path(QString p_char, QString p_file);
-  VPath get_misc_path(QString p_misc, QString p_file);
-  VPath get_sounds_path(QString p_file);
-  VPath get_music_path(QString p_song);
-  VPath get_background_path(QString p_file);
-  VPath get_default_background_path(QString p_file);
-  VPath get_evidence_path(QString p_file);
-  QVector<VPath> get_asset_paths(QString p_element, QString p_theme = QString(), QString p_subtheme = QString(), QString p_default_theme = QString(), QString p_misc = QString(), QString p_character = QString(), QString p_placeholder = QString());
-  QString get_asset_path(QVector<VPath> pathlist);
-  QString get_image_path(QVector<VPath> pathlist, int &index, bool static_image = false);
-  QString get_image_path(QVector<VPath> pathlist, bool static_image = false);
-  QString get_sfx_path(QVector<VPath> pathlist);
-  QString get_config_value(QString p_identifier, QString p_config, QString p_theme = QString(), QString p_subtheme = QString(), QString p_default_theme = QString(), QString p_misc = QString());
-  QString get_asset(QString p_element, QString p_theme = QString(), QString p_subtheme = QString(), QString p_default_theme = QString(), QString p_misc = QString(), QString p_character = QString(), QString p_placeholder = QString());
-  QString get_image(QString p_element, QString p_theme = QString(), QString p_subtheme = QString(), QString p_default_theme = QString(), QString p_misc = QString(), QString p_character = QString(), QString p_placeholder = QString(), bool static_image = false);
-  QString get_sfx(QString p_sfx, QString p_misc = QString(), QString p_character = QString());
-
-  BackgroundPosition get_pos_path(const QString &pos);
-
-  QString get_case_sensitive_path(QString p_file);
-  QString get_real_path(const VPath &vpath, const QStringList &suffixes = {""});
+  BackgroundPosition get_pos_path(const QString &background, const QString &position);
 
   QString find_image(QStringList p_list);
 
@@ -139,7 +65,6 @@ public:
   // Implementations file_functions.cpp
 
   // returns all of the file's lines in a QStringList
-  QStringList get_list_file(VPath path);
   QStringList get_list_file(QString p_file);
 
   // Process a file and return its text as a QString
@@ -153,24 +78,7 @@ public:
   // directory if it doesn't exist.
   bool append_to_file(QString p_text, QString p_file, bool make_dir = false);
 
-  // Append to the currently open demo file if there is one
-  void append_to_demofile(QString packet_string);
-
-  /**
-   * @brief Reads the clients log folder and locates potential demo files to populate the demoserver list.
-   *
-   * @return A seperated list of servernames and demo logfile filenames.
-   *
-   * @details This is to remove the need of delimiters or deal with potential
-   * harmfully encoding or plattform differences. We always get a combo of servername and filename.
-   *
-   * Do note this function assumes all demo files have the .demo extension.
-   *
-   */
-  QMultiMap<QString, QString> load_demo_logs_list() const;
-
   // Returns the value of p_identifier in the design.ini file in p_design_path
-  QString read_design_ini(QString p_identifier, VPath p_design_path);
   QString read_design_ini(QString p_identifier, QString p_design_path);
 
   // Returns the coordinates of widget with p_identifier from p_file
@@ -183,7 +91,7 @@ public:
   QString get_design_element(QString p_identifier, QString p_file, QString p_misc = QString());
 
   // Returns the color with p_identifier from p_file
-  QColor get_color(QString p_identifier, QString p_file);
+  QColor get_color(const QString &identifier, const QString &fileName, const QColor &defaultColor = Qt::black);
 
   // Returns the markup symbol used for specified p_identifier such as colors
   QString get_chat_markup(QString p_identifier, QString p_file);
@@ -198,18 +106,13 @@ public:
   // Returns the sfx with p_identifier from courtroom_sounds.ini in the current theme path
   QString get_court_sfx(QString p_identifier, QString p_misc = QString());
 
-  // Figure out if we can opus this or if we should fall back to wav
-  QString get_sfx_suffix(VPath sound_to_check);
-
-  // Can we use APNG for this? If not, WEBP? If not, GIF? If not, fall back to
-  // PNG.
-  QString get_image_suffix(VPath path_to_check, bool static_image = false);
+  QList<SfxItem> get_sfx_list(QString file_name);
 
   // Returns the value of p_search_line within target_tag and terminator_tag
   QString read_char_ini(QString p_char, QString p_search_line, QString target_tag);
 
   // Returns a QStringList of all key=value definitions on a given tag.
-  QStringList read_ini_tags(VPath p_file, QString target_tag = QString());
+  QStringList read_ini_tags(QString p_file, QString target_tag = QString());
 
   // Returns the text between target_tag and terminator_tag in p_file
   QString get_stylesheet(QString p_file);
@@ -238,28 +141,14 @@ public:
   // Not in use
   int get_text_delay(QString p_char, QString p_emote);
 
-  // Get the theme's effects folder, read it and return the list of filenames in
-  // a string
-  QStringList get_effects(QString p_char);
-
-  // Get the correct effect image
-  QString get_effect(QString effect, QString p_char, QString p_folder);
-
-  // Return p_property of fx_name. If p_property is "sound", return
-  // the value associated with fx_name, otherwise use fx_name + '_' + p_property.
-  QString get_effect_property(QString fx_name, QString p_char, QString p_folder, QString p_property);
-
-  // Returns the custom realisation used by the character.
-  QString get_custom_realization(QString p_char);
-
   // Returns whether the given pos is a judge position
-  bool get_pos_is_judge(const QString &p_pos);
+  bool get_pos_is_judge(const QString &background, const QString &p_pos);
 
   /**
    * @brief Returns the duration of the transition animation between the two
    * given positions, if it exists
    */
-  int get_pos_transition_duration(const QString &old_pos, const QString &new_pos);
+  int get_pos_transition_duration(const QString &background, const QString &old_pos, const QString &new_pos);
 
   // Returns the total amount of emotes of p_char
   int get_emote_number(QString p_char);
@@ -300,9 +189,6 @@ public:
   // Returns p_char's blipname by reading char.ini for blips (previously called "gender")
   QString get_blipname(QString p_char, int p_emote = -1);
 
-  // Returns p_blipname's sound(path) to play in the client
-  QString get_blips(QString p_blipname);
-
   // Get a property of a given emote, or get it from "options" if emote doesn't have it
   QString get_emote_property(QString p_char, QString p_emote, QString p_property);
 
@@ -310,42 +196,82 @@ public:
   RESIZE_MODE get_scaling(QString p_scaling);
 
   // Returns the scaling type for p_miscname
-  RESIZE_MODE get_misc_scaling(QString p_miscname);
+  RESIZE_MODE get_chatbox_scaling(const QString &chatbox);
 
   // ======
   // These are all casing-related settings.
   // ======
 
-  // Currently defined subtheme
-  QString subtheme;
-
-  const QString default_theme = "default"; // don't change this!!! don't do it!!!
-
   // The file name of the log file in base/logs.
   QString log_filename;
 
-  bool pointExistsOnScreen(QPoint point);
-  void centerOrMoveWidgetOnPrimaryScreen(QWidget *widget);
+  bool pointExistsOnScreen(const QPoint &point);
+  void restoreWindowPosition(QWidget *window);
 
   void initBASS();
-  static void load_bass_plugins();
-  static void CALLBACK BASSreset(HSTREAM handle, DWORD channel, DWORD data, void *user);
-  static void doBASSreset();
-
-  QElapsedTimer demo_timer;
-  DemoServer *demo_server = nullptr;
 
 private:
-  QVector<ServerInfo> server_list;
-  QHash<size_t, QString> asset_lookup_cache;
-  QHash<size_t, QString> dir_listing_cache;
-  QSet<size_t> dir_listing_exist_cache;
+  static AOApplication *self;
 
-public Q_SLOTS:
-  void server_connected();
-  void server_disconnected();
-  void loading_cancelled();
+  Options &options;
+  kal::AssetPathResolver &m_resolver;
+
+  kal::NetworkManager m_network;
+  kal::NetworkSession m_session;
+
+  Lobby *w_lobby = nullptr;
+  LoadingWindow *w_loading = nullptr;
+  Courtroom *w_courtroom = nullptr;
+
+  kal::PlayerId m_player_id = 0;
+
+  static void handleMessage(QtMsgType type, const QMessageLogContext &context, const QString &msg);
+
+  void createLobby(bool visible);
+  void createLoadingWindow(bool visible);
+  void createCourtroom(bool visible);
+  void destroyLobby();
+  void destroyLoadingWindow();
+  void destroyCourtroom();
+
+  void beginHandshake();
+  void completeHandshake();
+
+  void cargo(kal::HelloPacket &cargo) override;
+  void cargo(kal::WelcomePacket &cargo) override;
+  void cargo(kal::AreaListPacket &cargo) override;
+  void cargo(kal::UpdateAreaPacket &cargo) override;
+  void cargo(kal::JoinAreaPacket &cargo) override;
+  void cargo(kal::BackgroundPacket &cargo) override;
+  void cargo(kal::PositionPacket &cargo) override;
+  void cargo(kal::CasePacket_CASEA &cargo) override;
+  void cargo(kal::CharacterListPacket &cargo) override;
+  void cargo(kal::SelectCharacterPacket &cargo) override;
+  void cargo(kal::CharacterSelectStatePacket &cargo) override;
+  void cargo(kal::ChatPacket &cargo) override;
+  void cargo(kal::EvidenceListPacket &cargo) override;
+  void cargo(kal::CreateEvidencePacket &cargo) override;
+  void cargo(kal::EditEvidencePacket &cargo) override;
+  void cargo(kal::DeleteEvidencePacket &cargo) override;
+  void cargo(kal::JudgeStatePacket &cargo) override;
+  void cargo(kal::HealthStatePacket &cargo) override;
+  void cargo(kal::SplashPacket &cargo) override;
+  void cargo(kal::LoginPacket &cargo) override;
+  void cargo(kal::MessagePacket &cargo) override;
+  void cargo(kal::ModerationAction &cargo) override;
+  void cargo(kal::ModerationNotice &cargo) override;
+  void cargo(kal::MusicListPacket &cargo) override;
+  void cargo(kal::PlayTrackPacket &cargo) override;
+  void cargo(kal::RegisterPlayerPacket &cargo) override;
+  void cargo(kal::UpdatePlayerPacket &cargo) override;
+  void cargo(kal::HelpMePacket &cargo) override;
+  void cargo(kal::NoticePacket &cargo) override;
+  void cargo(kal::SetTimerStatePacket &cargo) override;
 
 Q_SIGNALS:
-  void qt_log_message(QtMsgType type, const QMessageLogContext &context, const QString &msg);
+  void messageReceived(QtMsgType type, const QMessageLogContext &context, const QString &msg);
+
+private Q_SLOTS:
+  void processNetworkStatus(kal::NetworkManager::Status status);
+  void processNetworkPacket();
 };

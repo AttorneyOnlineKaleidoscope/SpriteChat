@@ -3,27 +3,17 @@
 #include "datatypes.h"
 #include "network/serverinfo.h"
 
-#include <QCoreApplication>
+#include <QObject>
+#include <QPoint>
 #include <QSettings>
 
-#include <QPoint>
-
-class Options
+class Options : public QObject
 {
+  Q_OBJECT
+
 public:
-  Options(const Options &) = delete;
-  void operator=(const Options &) = delete;
-
-  static Options &getInstance()
-  {
-    static Options instance;
-    return instance;
-  }
-
-  /**
-   * @brief Migrates old configuration files to the most recent format.
-   */
-  void migrate();
+  explicit Options(QObject *parent = nullptr);
+  virtual ~Options();
 
   // Reads the theme from config.ini and loads it into the currenttheme
   // variable
@@ -131,10 +121,6 @@ public:
   bool customChatboxEnabled() const;
   void setCustomChatboxEnabled(bool value);
 
-  // Returns the value of characer sticker (avatar) setting
-  bool characterStickerEnabled() const;
-  void setCharacterStickerEnabled(bool value);
-
   // Returns the value of whether continuous playback should be used
   // from the config.ini.
   bool continuousPlaybackEnabled() const;
@@ -208,19 +194,6 @@ public:
   bool logToTextFileEnabled() const;
   void setLogToTextFileEnabled(bool value);
 
-  // Get if demo logging is Enabled
-  bool logToDemoFileEnabled() const;
-  void setLogToDemoFileEnabled(bool value);
-
-  // Get the subtheme from settings
-  QString subTheme() const;
-  QString settingsSubTheme() const;
-  void setSettingsSubTheme(QString value);
-
-  // Returns the server-
-  QString serverSubTheme() const;
-  void setServerSubTheme(QString value);
-
   // Get if the theme is animated
   bool animatedThemeEnabled() const;
   void setAnimatedThemeEnabled(bool value);
@@ -264,16 +237,17 @@ public:
   void clearConfig();
 
   // Loads the favorite servers
-  QVector<ServerInfo> favorites();
-  void setFavorites(QVector<ServerInfo> value);
+  QList<kal::ServerInfo> favorites();
+  void setFavorites(QList<kal::ServerInfo> value);
 
   // Interactions with favorite servers
   void removeFavorite(int index);
-  void addFavorite(ServerInfo server);
-  void updateFavorite(ServerInfo server, int index);
+  void addFavorite(kal::ServerInfo server);
+  void updateFavorite(kal::ServerInfo server, int index);
 
   // Theming Nonesense!
   QString getUIAsset(QString f_asset_name);
+  QString getInternalUIAsset(QString f_asset_name);
 
   void setWindowPosition(QString widget, QPoint position);
   std::optional<QPoint> windowPosition(QString widget);
@@ -281,23 +255,17 @@ public:
   bool restoreWindowPositionEnabled() const;
   void setRestoreWindowPositionEnabled(bool state);
 
+Q_SIGNALS:
+  void mountListChanged();
+
 private:
-  /**
-   * @brief QSettings object for config.ini
-   */
-  QSettings config;
+  static Options *self;
 
-  /**
-   * @brief QSettings object for favorite_servers.ini
-   */
-  QSettings favorite;
+  QSettings m_config;
+  QSettings m_favorite_servers;
 
-  void migrateCallwords();
+  void migrate();
 
-  /**
-   * @brief Constructor for options class.
-   */
-  Options();
-
-  QString m_server_subtheme;
+  void readServer(kal::ServerInfo &server);
+  void writeServer(const kal::ServerInfo &server);
 };

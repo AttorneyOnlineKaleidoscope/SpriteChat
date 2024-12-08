@@ -13,9 +13,9 @@ class AOEvidenceButton : public QPushButton
   Q_OBJECT
 
 public:
-  AOEvidenceButton(int id, int width, int height, AOApplication *ao_app, QWidget *parent = nullptr);
+  AOEvidenceButton(int id, int width, int height, Options &options, kal::AssetPathResolver &assetPathResolver, QWidget *parent = nullptr);
 
-  void setImage(QString fileName);
+  void setEvidenceImage(QString fileName);
 
   void setThemeImage(QString fileName);
 
@@ -28,22 +28,21 @@ Q_SIGNALS:
   void mouseoverUpdated(int id, bool state);
 
 protected:
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-  void enterEvent(QEvent *e) override;
-#else
   void enterEvent(QEnterEvent *e) override;
-#endif
   void leaveEvent(QEvent *e) override;
 
   void mouseDoubleClickEvent(QMouseEvent *e) override;
 
 private:
-  AOApplication *ao_app;
+  Options &options;
+  kal::AssetPathResolver &m_resolver;
 
   int m_id = 0;
 
   AOImage *ui_selected;
   AOImage *ui_selector;
+
+  void setImage(const kal::MaybePath &fileName);
 
 private Q_SLOTS:
   void on_clicked();

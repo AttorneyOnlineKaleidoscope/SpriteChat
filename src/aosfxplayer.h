@@ -13,7 +13,7 @@ class AOSfxPlayer
 public:
   static constexpr int STREAM_COUNT = 5;
 
-  AOSfxPlayer(AOApplication *ao_app);
+  AOSfxPlayer(AOApplication &ao_app, kal::AssetPathResolver &assetPathResolver);
 
   int volume();
   void setVolume(int value);
@@ -25,13 +25,14 @@ public:
 
   void findAndPlaySfx(QString sfx);
   void findAndPlayCharacterSfx(QString sfx, QString character);
-  void findAndPlayCharacterShout(QString shout, QString character, QString group);
+  void findAndPlayCharacterShout(QString shout, QString character, QString pack);
 
   void setMuted(bool toggle);
   void setLooping(bool toggle, int streamId = -1);
 
 private:
-  AOApplication *ao_app;
+  AOApplication &ao_app;
+  kal::AssetPathResolver &m_resolver;
 
   int m_volume = 0;
   bool m_muted = false;

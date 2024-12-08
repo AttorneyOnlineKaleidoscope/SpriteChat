@@ -1,0 +1,25 @@
+#include "spritechatversion.h"
+
+QString kal::SpriteChat::softwareName()
+{
+  static const QString name("${PROJECT_NAME}");
+  return name;
+}
+
+QVersionNumber kal::SpriteChat::softwareVersion()
+{
+  static const QVersionNumber version = QVersionNumber::fromString("${PROJECT_VERSION}");
+  return version;
+}
+
+QString kal::SpriteChat::softwareVersionString()
+{
+  static const QString version = softwareVersion().toString();
+  return version;
+}
+
+QString kal::SpriteChat::softwareAgent()
+{
+  static const QString agent = QStringLiteral("%1/%2").arg(softwareName()).arg(softwareVersionString());
+  return agent;
+}

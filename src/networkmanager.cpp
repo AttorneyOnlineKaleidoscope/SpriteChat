@@ -11,190 +11,172 @@
 #include <QJsonObject>
 #include <QNetworkReply>
 
-NetworkManager::NetworkManager(AOApplication *parent)
+constinit int PING_INTERVAL = 5000;
+
+kal::NetworkManager::NetworkManager(QObject *parent)
     : QObject(parent)
+{}
+
+kal::NetworkManager::~NetworkManager()
+{}
+
+kal::NetworkManager::Status kal::NetworkManager::status() const
 {
-  ao_app = parent;
-
-  http = new QNetworkAccessManager(this);
-  heartbeat_timer = new QTimer(this);
-
-  QString master_config = Options::getInstance().alternativeMasterserver();
-  if (!master_config.isEmpty() && QUrl(master_config).scheme().startsWith("http"))
-  {
-    qInfo() << "using alternate master server" << master_config;
-    ms_baseurl = master_config;
-  }
-
-  connect(heartbeat_timer, &QTimer::timeout, this, &NetworkManager::send_heartbeat);
-  heartbeat_timer->start(heartbeat_interval);
+  return m_status;
 }
 
-void NetworkManager::get_server_list()
+kal::ServerInfo kal::NetworkManager::server() const
 {
-  QNetworkRequest req(QUrl(ms_baseurl + "/servers"));
-  req.setRawHeader("User-Agent", get_user_agent().toUtf8());
-
-  QNetworkReply *reply = http->get(req);
-  connect(reply, &QNetworkReply::finished, this, std::bind(&NetworkManager::ms_request_finished, this, reply));
+  return m_server;
 }
 
-void NetworkManager::ms_request_finished(QNetworkReply *reply)
+void kal::NetworkManager::setServer(const kal::ServerInfo &server)
 {
-  QJsonDocument json = QJsonDocument::fromJson(reply->readAll());
-  if (json.isNull())
+  disconnectFromServer();
+  m_server = server;
+}
+
+void kal::NetworkManager::setAndConnectToServer(const kal::ServerInfo &server)
+{
+  setServer(server);
+  connectToServer();
+}
+
+int kal::NetworkManager::latency() const
+{
+  return m_latency;
+}
+
+void kal::NetworkManager::shipPacket(const kal::Packet &packet)
+{
+  if (!m_socket)
   {
-    qCritical().noquote() << "Invalid JSON response from" << reply->url();
-    reply->deleteLater();
+    kCritical() << "Failed to ship packet; no connection.";
     return;
   }
 
-  qDebug().noquote() << "Got valid response from" << reply->url();
-
-  QVector<ServerInfo> server_list;
-  const auto jsonEntries = json.array();
-  for (const auto &entryRef : jsonEntries)
-  {
-    const auto entry = entryRef.toObject();
-    ServerInfo server;
-    server.address = entry["ip"].toString();
-    server.name = entry["name"].toString();
-    server.description = entry["description"].toString(tr("No description provided."));
-    if (entry.contains("ws_port"))
-    {
-      server.port = entry["ws_port"].toInt();
-    }
-    else
-    {
-      server.port = entry["port"].toInt();
-      server.legacy = true;
-    }
-
-    if (server.port != 0)
-    {
-      server_list.append(server);
-    }
-  }
-  ao_app->set_server_list(server_list);
-
-  if (ao_app->is_lobby_constructed())
-  {
-    ao_app->w_lobby->list_servers();
-  }
-  reply->deleteLater();
+  m_socket->shipPacket(packet);
 }
 
-QString NetworkManager::get_user_agent() const
+QQueue<kal::Packet> kal::NetworkManager::takePacketQueue()
 {
-  return QStringLiteral("AttorneyOnline/%1 (Desktop)").arg(ao_app->get_version_string());
+  return QQueue<kal::Packet>(std::move(m_queue));
 }
 
-void NetworkManager::send_heartbeat()
+void kal::NetworkManager::connectToServer()
 {
-  // Ping the server periodically to tell the MS that you've been playing
-  // within a 5 minute window, so that the the number of people playing within
-  // that time period can be counted and an accurate player count be displayed.
-  // What do I care about your personal information, I really don't want it.
-  if (Options::getInstance().playerCountOptout())
+  disconnectFromServer();
+  kInfo() << QObject::tr("Connecting to %1").arg(m_server.toString());
+
+  m_socket = new kal::SocketClient(this);
+  connect(m_socket, &kal::SocketClient::stateChanged, this, &kal::NetworkManager::checkSocketState);
+  connect(m_socket, &kal::SocketClient::errorOccurred, this, &NetworkManager::processSocketError);
+  connect(m_socket, &kal::SocketClient::pendingPacketAvailable, this, &kal::NetworkManager::processPacketQueue);
+
+  QUrl url;
+  url.setScheme("ws");
+  url.setHost(m_server.address);
+  url.setPort(m_server.port);
+
+  setStatus(Connecting);
+  m_socket->open(url);
+}
+
+void kal::NetworkManager::disconnectFromServer()
+{
+  stopPinging();
+
+  if (m_socket)
+  {
+    m_socket->close();
+    m_socket->deleteLater();
+    m_socket = nullptr;
+  }
+}
+
+void kal::NetworkManager::setStatus(Status status)
+{
+  if (m_status == status)
   {
     return;
   }
-
-  QNetworkRequest req(QUrl(ms_baseurl + "/playing"));
-  req.setRawHeader("User-Agent", get_user_agent().toUtf8());
-
-  http->post(req, QByteArray());
+  m_status = status;
+  Q_EMIT statusChanged(status);
 }
 
-void NetworkManager::request_document(MSDocumentType document_type, const std::function<void(QString)> &cb)
+void kal::NetworkManager::startPinging()
 {
-  const QMap<MSDocumentType, QString> endpoints{// I have to balance an evil with a good
-                                                {MSDocumentType::PrivacyPolicy, "/privacy"},
-                                                {MSDocumentType::Motd, "/motd"},
-                                                {MSDocumentType::ClientVersion, "/version"}};
+  stopPinging();
+  m_latency = 0;
+  m_ping_timer = new QTimer(this);
+  m_ping_timer->setSingleShot(false);
+  m_ping_timer->setInterval(PING_INTERVAL);
+  QWebSocket *socket = m_socket->websocket();
+  connect(socket, &QWebSocket::pong, this, &kal::NetworkManager::updateLatency);
+  connect(m_ping_timer, &QTimer::timeout, this, &kal::NetworkManager::ping);
+  m_ping_timer->start();
+  ping();
+}
 
-  const QString &endpoint = endpoints[document_type];
-  QNetworkRequest req(QUrl(ms_baseurl + endpoint));
-  req.setRawHeader("User-Agent", get_user_agent().toUtf8());
-
-  QString language = Options::getInstance().language();
-  if (language.trimmed().isEmpty())
+void kal::NetworkManager::stopPinging()
+{
+  if (m_ping_timer)
   {
-    language = QLocale::system().name();
-  }
-
-  req.setRawHeader("Accept-Language", language.toUtf8());
-
-  qDebug().noquote().nospace() << "Getting " << endpoint << ", Accept-Language: " << language;
-
-  QNetworkReply *reply = http->get(req);
-  connect(reply, &QNetworkReply::finished, this, [endpoint, cb, reply] {
-    QString content = QString::fromUtf8(reply->readAll());
-    int http_status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    if (content.isEmpty() || http_status != 200)
+    if (m_ping_timer->isActive())
     {
-      qDebug().noquote().nospace() << "Failed to get " << endpoint << " (" << reply->errorString() << ") "
-                                   << "(http status " << http_status << ")";
-      content = QString();
+      m_ping_timer->stop();
     }
-    cb(content);
-    reply->deleteLater();
-  });
-}
-
-void NetworkManager::connect_to_server(ServerInfo server)
-{
-  disconnect_from_server();
-
-  qInfo().noquote() << QObject::tr("Connecting to %1").arg(server.toString());
-  m_connection = new WebSocketConnection(ao_app, this);
-
-  connect(m_connection, &WebSocketConnection::connectedToServer, ao_app, &AOApplication::server_connected);
-  connect(m_connection, &WebSocketConnection::disconnectedFromServer, ao_app, &AOApplication::server_disconnected);
-  connect(m_connection, &WebSocketConnection::errorOccurred, this, [](QString error) { qCritical() << "Connection error:" << error; });
-  connect(m_connection, &WebSocketConnection::receivedPacket, this, &NetworkManager::handle_server_packet);
-
-  m_connection->connectToServer(server);
-}
-
-void NetworkManager::disconnect_from_server()
-{
-  if (m_connection)
-  {
-    m_connection->disconnectFromServer();
-    m_connection->deleteLater();
-    m_connection = nullptr;
+    m_ping_timer->deleteLater();
+    m_ping_timer = nullptr;
   }
 }
 
-void NetworkManager::ship_server_packet(AOPacket packet)
+void kal::NetworkManager::checkSocketState()
 {
-  if (!m_connection)
+  switch (m_socket->state())
   {
-    qCritical() << "Failed to ship packet; no connection.";
-    return;
-  }
+  default:
+    break;
 
-  if (!m_connection->isConnected())
-  {
-    qCritical() << "Failed to ship packet; not connected.";
-    return;
+  case QAbstractSocket::UnconnectedState:
+    stopPinging();
+    setStatus(NotConnected);
+    break;
+
+  case QAbstractSocket::ConnectingState:
+    setStatus(Connecting);
+    break;
+
+  case QAbstractSocket::ConnectedState:
+    setStatus(Connected);
+    startPinging();
+    break;
   }
-#ifdef NETWORK_DEBUG
-  qInfo().noquote() << "Sending packet:" << packet.toString();
-#endif
-  m_connection->sendPacket(packet);
 }
 
-void NetworkManager::join_to_server()
+void kal::NetworkManager::processSocketError(const QString &error)
 {
-  ship_server_packet(AOPacket("askchaa"));
+  kWarning() << "Socket error:" << error;
 }
 
-void NetworkManager::handle_server_packet(AOPacket packet)
+void kal::NetworkManager::processPacketQueue()
 {
-#ifdef NETWORK_DEBUG
-  qInfo().noquote() << "Received packet:" << packet.toString();
-#endif
-  ao_app->server_packet_received(packet);
+  while (m_socket->hasPendingPacket())
+  {
+    m_queue.enqueue(m_socket->nextPendingPacket());
+  }
+  Q_EMIT packetReceived();
+}
+
+void kal::NetworkManager::ping()
+{
+  QWebSocket *socket = m_socket->websocket();
+  m_latency_timer.restart();
+  socket->ping();
+}
+
+void kal::NetworkManager::updateLatency()
+{
+  m_latency = m_latency_timer.elapsed();
+  Q_EMIT latencyChanged(m_latency);
 }

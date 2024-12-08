@@ -489,7 +489,7 @@ $CMAKE . \
     if [[ "$PLATFORM" == "windows" ]]; then
         echo "Fixing dependencies..."
         windeployqt="${QT_PATH}/bin/windeployqt.exe"
-        "$windeployqt" --no-quick-import --no-translations --no-compiler-runtime --no-opengl-sw ./bin/Attorney_Online.exe
+        "$windeployqt" --no-quick-import --no-translations --no-compiler-runtime --no-opengl-sw ./bin/SpriteChat.exe
     fi
 
     echo "Configuration and build complete."

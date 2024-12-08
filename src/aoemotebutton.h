@@ -10,7 +10,7 @@ class AOEmoteButton : public QPushButton
   Q_OBJECT
 
 public:
-  AOEmoteButton(int id, int width, int height, AOApplication *ao_app, QWidget *parent = nullptr);
+  AOEmoteButton(int id, int width, int height, AOApplication &ao_app, kal::AssetPathResolver &assetPathResolver, QWidget *parent = nullptr);
 
   int id();
 
@@ -22,7 +22,8 @@ Q_SIGNALS:
   void emoteClicked(int p_id);
 
 private:
-  AOApplication *ao_app;
+  AOApplication &ao_app;
+  kal::AssetPathResolver &m_resolver;
 
   int m_id = 0;
 

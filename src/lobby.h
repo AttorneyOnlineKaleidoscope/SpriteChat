@@ -1,15 +1,17 @@
 #pragma once
 
+#include "assetpathresolver.h"
+#include "file_functions.h"
+#include "network/masterapigateway.h"
+#include "networkmanager.h"
+
 #include <QLabel>
 #include <QLineEdit>
+#include <QMainWindow>
 #include <QPushButton>
 #include <QTextBrowser>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
-
-#include "file_functions.h"
-#include "networkmanager.h"
-#include <QMainWindow>
 
 #ifdef ANDROID
 #include <QtAndroidExtras/QtAndroid>
@@ -22,94 +24,95 @@ class Lobby : public QMainWindow
   Q_OBJECT
 
 public:
-  Lobby(AOApplication *p_ao_app, NetworkManager *p_net_man = nullptr);
+  enum ServerType
+  {
+    Public,
+    Favorite,
+  };
+
+  explicit Lobby(Options &options, AOApplication &application, kal::AssetPathResolver &assetPathResolver, kal::NetworkManager &network, QWidget *parent = nullptr);
   ~Lobby();
 
-  void set_player_count(int players_online, int max_players);
-  void set_server_description(const QString &server_description);
-  void list_servers();
-  int get_selected_server();
-  int pageSelected();
+  ServerType currentServerType() const;
+  std::optional<kal::ServerInfo> currentServer() const;
 
 protected:
   void closeEvent(QCloseEvent *event) override;
 
 private:
-  AOApplication *ao_app;
-  NetworkManager *net_manager;
-
-  const QString DEFAULT_UI = "lobby.ui";
-
-  void list_favorites();
-  void list_demos();
-  void get_motd();
-  void check_for_updates();
-  void reset_selection();
-
-  int last_index = -1;
-
-  enum TabPage
+  enum SortMode
   {
-    SERVER,
-    FAVORITES,
-    DEMOS
+    NoSort,
+    Ascending,
+    Descending,
   };
 
-  // UI-file Lobby
+  Options &options;
+  AOApplication &ao_app;
+  kal::AssetPathResolver &m_resolver;
+  kal::NetworkManager &m_network;
+  kal::MasterApiGateway m_master;
 
-  // Top Row
-  QLabel *ui_game_version_lbl;
-  QPushButton *ui_settings_button;
-  QPushButton *ui_about_button;
+  ServerType m_tab = Public;
+  SortMode m_sort = NoSort;
+  QList<kal::ServerInfo> m_public_list;
+  QList<kal::ServerInfo> m_favorite_list;
 
-  // Server, Favs and Demo lists
-  QTabWidget *ui_connections_tabview;
+  QLabel *ui_version;
+  QPushButton *ui_options;
+  QPushButton *ui_about;
 
-  QTreeWidget *ui_serverlist_tree;
-  QLineEdit *ui_serverlist_search;
+  QTabWidget *ui_tabs;
 
-  QTreeWidget *ui_favorites_tree;
-  QLineEdit *ui_favorites_search;
+  QTreeWidget *ui_public_tree;
+  QLineEdit *ui_public_search;
+  QPushButton *ui_direct_connect;
+  QPushButton *ui_add_to_favorite;
 
-  QTreeWidget *ui_demo_tree;
-  QLineEdit *ui_demo_search;
+  QTreeWidget *ui_favorite_tree;
+  QPushButton *ui_add_favorite;
+  QPushButton *ui_remove_favorite;
+  QPushButton *ui_edit_favorite;
 
-  QPushButton *ui_add_to_favorite_button;
-  QPushButton *ui_add_server_button;
-  QPushButton *ui_remove_from_favorites_button;
-  QPushButton *ui_edit_favorite_button;
-  QPushButton *ui_direct_connect_button;
-  QPushButton *ui_refresh_button;
+  QPushButton *ui_refresh;
 
-  // Serverinfo / MOTD Horizontal Row
-  QTextBrowser *ui_motd_text;
+  QTextBrowser *ui_description;
+  QPushButton *ui_connect;
 
-  QLabel *ui_server_player_count_lbl;
-  QTextBrowser *ui_server_description_text;
-  QPushButton *ui_connect_button;
+  QTextBrowser *ui_motd;
 
-  // Optional Widget
-  QTextBrowser *ui_game_changelog_text;
+  void setupInterface();
 
-  void loadUI();
-  void reloadUi();
+  void updateFavoriteList();
+  void updateServerList(QTreeWidget *tree, const QList<kal::ServerInfo> &serverList);
+  void sortServerList();
+  void sortServerList(QTreeWidget *tree);
 
-  TabPage current_page = SERVER;
+  void displayCurrentServerDescription();
 
 private Q_SLOTS:
-  void on_tab_changed(int index);
-  void on_refresh_released();
-  void on_direct_connect_released();
-  void on_add_to_fav_released();
-  void on_add_server_to_fave_released();
-  void on_edit_favorite_released();
-  void on_remove_from_fav_released();
-  void on_about_clicked();
-  void on_server_list_clicked(QTreeWidgetItem *p_item, int column);
-  void on_list_doubleclicked(QTreeWidgetItem *p_item, int column);
-  void on_favorite_tree_clicked(QTreeWidgetItem *p_item, int column);
-  void on_server_search_edited(QString p_text);
-  void on_demo_clicked(QTreeWidgetItem *item, int column);
-  void onReloadThemeRequested(); // Oh boy.
-  void onSettingsRequested();
+  void openAbout();
+  void openOptions();
+  void openDirectConnect();
+
+  void displayMasterError(const QString &error);
+  void checkMasterVersion();
+
+  void updateMessageOfTheDay();
+
+  void resetCurrentServerSelection();
+  void refreshServerList();
+
+  void updatePublicList();
+  void filterPublicList();
+
+  void addToFavorite();
+  void addFavorite();
+  void editFavorite();
+  void removeFavorite();
+
+  void nextServerSortMode();
+
+  void setupCurrentServer();
+  void connectToCurrentServer();
 };
