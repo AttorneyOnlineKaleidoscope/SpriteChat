@@ -462,6 +462,7 @@ bool Options::playerCountOptout() const
 void Options::setPlayerCountOptout(bool value)
 {
   m_config.setValue("player_count_optout", value);
+  Q_EMIT playerCountOptoutToggled(value);
 }
 
 bool Options::playSelectedSFXOnIdle() const

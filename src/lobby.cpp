@@ -26,6 +26,7 @@ Lobby::Lobby(Options &options, AOApplication &application, kal::AssetPathResolve
     , ao_app(application)
     , m_resolver(assetPathResolver)
     , m_network(network)
+    , m_master(options)
 {
   setupInterface();
 
@@ -176,7 +177,6 @@ void Lobby::updateServerList(QTreeWidget *tree, const QList<kal::ServerInfo> &se
 void Lobby::refreshServerList()
 {
   resetCurrentServerSelection();
-  m_master.setOrigin(options.alternativeMasterserver());
   m_master.requestMessageOfTheDay();
   m_master.requestServerList();
   m_master.requestVersion();

@@ -88,6 +88,7 @@ qt_add_executable(${PROJECT_NAME}
   src/widget/moderatordialog.cpp src/widget/moderatordialog.h
   src/widget/playerlistwidget.cpp src/widget/playerlistwidget.h
   src/widget/servereditordialog.cpp src/widget/servereditordialog.h
+  src/network/masterapistatuspublisher.h src/network/masterapistatuspublisher.cpp
 )
 
 add_custom_target(Changelog SOURCES

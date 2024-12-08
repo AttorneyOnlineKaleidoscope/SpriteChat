@@ -257,6 +257,7 @@ public:
 
 Q_SIGNALS:
   void mountListChanged();
+  void playerCountOptoutToggled(bool);
 
 private:
   static Options *self;

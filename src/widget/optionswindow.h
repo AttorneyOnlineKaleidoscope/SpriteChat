@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assetpathresolver.h"
+#include "network/masterapigateway.h"
 #include "options.h"
 
 #include <QApplication>
@@ -35,6 +36,7 @@ public:
 private:
   Options &options;
   kal::AssetPathResolver &m_resolver;
+  kal::MasterApiGateway m_master;
 
   // Dialog interaction buttons. Save/Discard/Restore Defaults
   QDialogButtonBox *ui_settings_buttons;
@@ -148,4 +150,5 @@ private Q_SLOTS:
   void onReloadThemeClicked();
   void themeChanged(int i);
   void setupUI();
+  void updatePrivacyPolicy();
 };

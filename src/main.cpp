@@ -4,6 +4,7 @@
 #include "debug_functions.h"
 #include "file_functions.h"
 #include "lobby.h"
+#include "network/masterapistatuspublisher.h"
 #include "pathresolver.h"
 #include "spritechatversion.h"
 
@@ -95,6 +96,7 @@ int main(int argc, char *argv[])
 
     kal::PathResolver path_resolver;
     kal::AssetPathResolver asset_path_resolver(path_resolver, options);
+    kal::MasterApiStatusPublisher status_publisher(options);
     AOApplication main_app(options, asset_path_resolver);
     main_app.default_font = scaled_font;
 

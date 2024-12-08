@@ -6,16 +6,15 @@
 #include <QJsonValue>
 #include <QNetworkRequest>
 
-kal::MasterApiGateway::MasterApiGateway(QObject *parent)
+kal::MasterApiGateway::MasterApiGateway(Options &options, QObject *parent)
     : QObject{parent}
+    , options{options}
 {
   connect(&m_client, &MasterApiClient::errorOccurred, this, &MasterApiGateway::errorOccurred);
 }
 
-void kal::MasterApiGateway::setOrigin(const QUrl &origin)
-{
-  m_origin = origin;
-}
+kal::MasterApiGateway::~MasterApiGateway()
+{}
 
 QString kal::MasterApiGateway::messageOfTheDay() const
 {
@@ -32,10 +31,14 @@ QVersionNumber kal::MasterApiGateway::version() const
   return m_version;
 }
 
+QString kal::MasterApiGateway::privacyPolicy() const
+{
+  return m_privacy_policy;
+}
+
 void kal::MasterApiGateway::request(const QString &path, const MasterApiClient::Callback &callback)
 {
-  m_client.setOrigin(m_origin);
-  m_client.request(path, callback);
+  m_client.request(options.alternativeMasterserver(), path, callback);
 }
 
 void kal::MasterApiGateway::requestMessageOfTheDay()
@@ -105,6 +108,14 @@ void kal::MasterApiGateway::requestVersion()
   request(path, [this](const QByteArray &payload) {
     m_version = QVersionNumber::fromString(payload);
     Q_EMIT versionChanged();
+  });
+}
+
+void kal::MasterApiGateway::requestPrivacyPolicy()
+{
+  request("/privacy", [this](const QByteArray &payload) {
+    m_privacy_policy = QString(payload);
+    Q_EMIT privacyPolicyChanged();
   });
 }
 

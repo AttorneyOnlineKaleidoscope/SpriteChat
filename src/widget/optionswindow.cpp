@@ -19,8 +19,11 @@ OptionsWindow::OptionsWindow(Options &options, kal::AssetPathResolver &assetPath
     : QDialog(parent)
     , options(options)
     , m_resolver(assetPathResolver)
+    , m_master(options)
 {
   setupUI();
+
+  connect(&m_master, &kal::MasterApiGateway::privacyPolicyChanged, this, &OptionsWindow::updatePrivacyPolicy);
 }
 
 void OptionsWindow::populateAudioDevices()
@@ -209,6 +212,8 @@ void OptionsWindow::updateValues()
   {
     entry.load();
   }
+
+  m_master.requestPrivacyPolicy();
 }
 
 void OptionsWindow::savePressed()
@@ -549,6 +554,11 @@ void OptionsWindow::setupUI()
   registerOption<QCheckBox, bool>("privacy_optout", &Options::playerCountOptout, &Options::setPlayerCountOptout);
 
   updateValues();
+}
+
+void OptionsWindow::updatePrivacyPolicy()
+{
+  ui_privacy_policy->setHtml(m_master.privacyPolicy());
 }
 
 void OptionsWindow::onTimestampFormatEdited()
