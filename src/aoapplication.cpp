@@ -121,20 +121,6 @@ void AOApplication::call_settings_menu()
   w_courtroom->playerList()->reloadPlayers();
 }
 
-QString AOApplication::find_image(QStringList p_list)
-{
-  QString image_path;
-  for (const QString &path : p_list)
-  {
-    if (file_exists(path))
-    {
-      image_path = path;
-      break;
-    }
-  }
-  return image_path;
-}
-
 bool AOApplication::pointExistsOnScreen(const QPoint &point)
 {
   for (QScreen *screen : QApplication::screens())

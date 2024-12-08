@@ -9,8 +9,8 @@
 #include "network/packettransport.h"
 #include "networkmanager.h"
 #include "networksession.h"
-#include "widget/optionswindow.h"
 #include "widget/loadingwindow.h"
+#include "widget/optionswindow.h"
 
 #include <bass.h>
 
@@ -58,8 +58,6 @@ public:
   QString get_config_value(const QString &fileName, const QString &identifier);
 
   BackgroundPosition get_pos_path(const QString &background, const QString &position);
-
-  QString find_image(QStringList p_list);
 
   ////// Functions for reading and writing files //////
   // Implementations file_functions.cpp
